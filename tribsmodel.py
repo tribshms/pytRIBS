@@ -1,4 +1,4 @@
-# tribs_sim.py
+# tribsmodel.py
 
 import numpy as np
 import argparse
@@ -10,25 +10,64 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 
-class Simulation(object):
+class Model(object):
     """
-    This package create a python class that represents a model simulation for the distributed hydrological model:
-    TIN-based Real-Time Integrated Basin Simulator (i.e. tRIBS), with the intention of increasing the overall efficiency
-    of post-and-pre model simulation processing as well as calibrating and experimenting with model behavior and finally
-    provides the useful integration of tRIBS with python functionality including but not limited to education and
-    programming tools like Jupyter Lab.
+    A tRIBS Model class.
+
+    This class provides access to the underlying framework of a tRIBS (TIN-based Real-time Integrated Basin
+    Simulator) simulation. It includes three nested classes: Preprocessing, Simulation, and Results. The Model class
+    is initialized at the top-level to facilitate model setup, simultation, post-processing and can be used
+    for mainpulating and generating multiple simulations in an efficient manner.
+
+    The Preprocessing class allows for visualization, analysis, and bias correction of the data used in a given
+    model. The Simulation class executes the tRIBS model and implements necessary recording of model steps,
+    including preserving model logs, input files, and differences between the base model simulation. The Simulation
+    class also has the Result class nested within it to allow quick and easy visualization and analysis of model
+    results.
+
+    Attributes:
+        input_options (dict): A dictionary of the necessary keywords for a tRIBS .in file.
+        model_input_file (str): Path to a template .in file with the specified paths for model results, inputs, etc.
+
+    Methods:
+         __init__(self, model_input_file):  # Constructor method
+            :param model_input_file: Path to a template .in file.
+            :type param1: str
+
+        read_input_vars(self):
+            Reads in templateVars file.
+
+        get_input_var(self, var):
+            Read variable specified by var from .in file.
+            :param var: A keyword from the .in file.
+            :type var: str
+            :return: the line following the keyword argument from the .in file.
+            :rtype: str
+
+        read_node_list(self,file_path):
+            Returns node list provide by .dat file.
+            :param file_path: Relative or absolute file path to .dat file.
+            :type file_path: str
+            :return: List of nodes specified by .dat file
+            :rtype: list
+
+        def convert_to_datetime(starting_date):
+            Returns a pandas date-time object.
+            :param starting_date: The start date of a given model simulation, note needs to be in tRIBS format.
+            :type starting_date: str
+            :return: A pandas Timestamp object.
+
+    Example:
+        Provide an example of how to create and use an instance of this class
+        >>> from tribsmodel import Model
+        >>> m = Model('/path/to/.in')
     """
 
-    def __init__(self, run_id, simulation_control_file):
+    def __init__(self, model_input_file):
         # fields
         self.input_options = None
-        self.simulation_id = run_id
-        self.simulation_control_file = simulation_control_file
+        self.model_input_file = model_input_file
         self.read_input_vars()
-        var = self.input_options['startdate']
-        self.startdate = self.get_input_var(var)
-        var = self.input_options['outfilename']
-        self.results_path = self.get_input_var(var)
 
         # nested classes
         self.Results = Results(self)
@@ -36,9 +75,17 @@ class Simulation(object):
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
     def read_input_vars(self):
         """
-        Reads in templateVars file: which contains a dictionary of the necessary variables for a tRIBS input file.
-        templateVars will need to be updated in the event new features area added to tRIBS and require manipulation via
-        the input file.
+        Reads in templateVars file.
+
+        This function loads a dictionary of the necessary variables for a tRIBS input file. And is called upon
+        initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
+        the templateVars file will need to be udpated if additional keywords are added to the .in file.
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model('/path/to/.in')
+            >>> m.input_options
+            {'startdate': 'STARTDATE:', 'runtime': 'RUNTIME:', 'rainsearch': 'RAINSEARCH:',...
         """
         try:
             with open('templateVars') as f:
@@ -51,17 +98,35 @@ class Simulation(object):
 
     def get_input_var(self, var):
         """
-        Reads the .in file used for model simulation, and obtains the starting date of the simulation
+        Read variable specified by var from .in file.
+
+        This function reads in the line following var, where var is required keyword or argument contained in the tRIBS
+        .in input file.
+
+        Parameters:
+            var (str): a keyword or argument from the .in file. Alternatively the keyword can be past from input_options
+
+        Examples:
+             Example 1:
+                >>> from tribsmodel import Model
+                >>> m = Model('/path/to/.in')
+                >>> m.get_input_var('STARTDATE:')
+                    '06/01/2002/00/00'
+             Example 2:
+                >>> from tribsmodel import Model
+                >>> s = Model('/path/to/.in')
+                >>> s.get_input_var(s.input_options['parallelmode'])
+                    '0'
         """
         try:
-            file_path = self.simulation_control_file
+            file_path = self.model_input_file
             with open(file_path, 'r') as f:
                 for line in f:
                     if line.startswith(var):
                         var_out = next(f).strip()
                 return var_out
         except FileNotFoundError:
-            print("Error: '" + self.simulation_control_file + "' file not found.")
+            print("Error: '" + self.model_input_file + "' file not found.")
 
     def read_soil_table(self):
         pass
@@ -69,13 +134,22 @@ class Simulation(object):
     def read_landuse_table(self):
         pass
 
-    def read_node_list(self):
+    def read_node_list(self,file_path):
         """
-        This function reads in the node list provide by the oNode.dat file. This is used for reading in element/pixel
-        files and subsequent processing.
+        Returns node list provide by .dat file.
+
+        The node list can be further modified or used for reading in element/pixel files and subsequent processing.
+
+        :param file_path: Relative or absolute file path to .dat file.
+        :type file_path: str
+        :return: List of nodes specified by .dat file
+        :rtype: list
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model('/path/to/.in')
+            >>> node_list = m.read_node_list(m.input_options['nodeoutputlist'])
         """
-        var = self.input_options['outletnodelist']
-        file_path = self.get_input_var(var)
         try:
             with open(file_path, 'r') as file:
                 lines = file.readlines()
@@ -106,6 +180,13 @@ class Simulation(object):
 
     @staticmethod
     def convert_to_datetime(starting_date):
+        """
+        Returns a pandas date-time object.
+
+        :param starting_date: The start date of a given model simulation, note needs to be in tRIBS format.
+        :type starting_date: str
+        :rtupe: A pandas Timestamp object
+        """
         month = int(starting_date[0:2])
         day = int(starting_date[3:5])
         year = int(starting_date[6:10])
@@ -114,10 +195,44 @@ class Simulation(object):
         date = pd.Timestamp(year=year, month=month, day=day, minute=minute)
         return date
 
-    # POST-PROCESSING NESTED CLASS: RESULTS
+class Simulation:
+    """
+    A tRIBS simulation class.
+
+    This class provides a framework for running individual tRIBS model simulations. It takes an instance of Class Model
+    and creates a subdirectory to store simulation information including, the individual model input files, simulation
+    logs, and finally executes the tRIBS binary with specified conditions.
 
 
+    Attributes:
+
+    Methods:
+
+    Example:
+        Provide an example of how to create and use an instance of this class
+
+    """
+    def __init__(self, model_instance):
+        self.model_instance = model_instance
+
+
+# POST-PROCESSING NESTED CLASS: RESULTS
 class Results:
+    """
+    A tRIBS Results Class.
+
+    This class provides a framework for analyzing and visualizing individual tRIBS simulations. It takes an instance of
+    Class Simulation and provides time-series and water balance analysis of the model results.
+
+
+    Attributes:
+
+    Methods:
+
+    Example:
+        Provide an example of how to create and use an instance of this class
+
+    """
     def __init__(self, sim_instance):
         self.sim_instance = sim_instance
         self.element_results = None
@@ -185,9 +300,9 @@ class Results:
 
         for n in range(0, len(years)):
             if n == 0:
-                waterbalance = self.water_balance_element(data, begin[n], end[n], porosity, element_area)
+                waterbalance = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
             else:
-                temp = self.water_balance_element(data, begin[n], end[n], porosity, element_area)
+                temp = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
 
                 for key, val in temp.items():
 
@@ -197,9 +312,9 @@ class Results:
         return waterbalance, years
 
     @staticmethod
-    def water_balance_element(element_data_frame, begin, end, porosity, element_area):
+    def estimate_element_water_balance(element_data_frame, begin, end, porosity, element_area):
         """
-        Computes water balance calculations for an individual computational element or node. Data = pandas data
+        Computes water balance calculations for an individual computational element or node over a specified time frame. Data = pandas data
         frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
         porosity is well, porosity, and element area is surface area of voronoi polygon. Returns a dictionary with
         individual water components, keys with the prescript d indicate change in storage (i.e. delta) and n

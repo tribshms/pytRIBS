@@ -1,4 +1,4 @@
-from simulation import Simulation
+from tribsmodel import Simulation
 class PostSimulation(Simulation):
     """
     This package create a python class that represents a model simulation for the distributed hydrological model:
