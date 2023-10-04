@@ -1,2 +1,4 @@
 .idea
 __pycache__
+HJ_BenchMark/results/*
+HJ_BenchMark/src/*
