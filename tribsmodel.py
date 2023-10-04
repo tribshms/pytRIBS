@@ -5,6 +5,7 @@ import argparse
 import pandas as pd
 import json
 import os
+import subprocess
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -73,29 +74,6 @@ class Model(object):
         self.Results = Results(self)
 
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
-    def read_input_vars(self):
-        """
-        Reads in templateVars file.
-
-        This function loads a dictionary of the necessary variables for a tRIBS input file. And is called upon
-        initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
-        the templateVars file will need to be udpated if additional keywords are added to the .in file.
-
-        Example:
-            >>> from tribsmodel import Model
-            >>> m = Model('/path/to/.in')
-            >>> m.input_options
-            {'startdate': 'STARTDATE:', 'runtime': 'RUNTIME:', 'rainsearch': 'RAINSEARCH:',...
-        """
-        try:
-            with open('templateVars') as f:
-                data = f.read()
-            self.input_options = json.loads(data)
-        except FileNotFoundError:
-            # Handle the case where the file doesn't exist
-            print("Error: 'templateVars' file not found.\n input_options set as empty dictionary")
-            self.input_options = {}
-
     def get_input_var(self, var):
         """
         Read variable specified by var from .in file.
@@ -194,6 +172,124 @@ class Model(object):
         second = int(starting_date[14:16])
         date = pd.Timestamp(year=year, month=month, day=day, minute=minute)
         return date
+    def read_input_vars(self):
+        """
+        Reads in dictionary from templateVars file.
+
+        This function loads a dictionary of the necessary variables for a tRIBS input file. And is called upon
+        initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
+        the templateVars file will need to be udpated if additional keywords are added to the .in file.
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model('/path/to/.in')
+            >>> m.input_options
+            {'startdate': 'STARTDATE:', 'runtime': 'RUNTIME:', 'rainsearch': 'RAINSEARCH:',...
+        """
+        self.input_options = {"startdate":"STARTDATE:",
+        "runtime":{"key_word":"RUNTIME:","describe":"simulation length in hours"},
+        "rainsearch":"RAINSEARCH:",
+        "timestep":"TIMESTEP:",
+        "gwstep":"GWSTEP:",
+        "metstep":"METSTEP:",
+        "etistep":"ETISTEP:",
+        "rainintrvl":"RAININTRVL:",
+        "opintrvl":"OPINTRVL:",
+        "spopintrvl":"SPOPINTRVL:",
+        "intstormmax":"INTSTORMMAX:",
+        "baseflow":"BASEFLOW:",
+        "velocitycoef":"VELOCITYCOEF:",
+        "kinemvelcoef":"KINEMVELCOEF:",
+        "velocityratio":"VELOCITYRATIO:",
+        "flowexp":"FLOWEXP:",
+        "channelroughness":"CHANNELROUGHNESS:",
+        "channelwidth":"CHANNELWIDTH:",
+        "channelwidthcoeff":"CHANNELWIDTHCOEFF:",
+        "channelwidthexpnt":"CHANNELWIDTHEXPNT:",
+        "channelwidthfile":"CHANNELWIDTHFILE:",
+        "optmeshinput":"OPTMESHINPUT:",
+        "rainsource":"RAINSOURCE:",
+        "optevapotrans":"OPTEVAPOTRANS:",
+        "hillalbopt":"HILLALBOPT:",
+        "optradshelt":"OPTRADSHELT:",
+        "optintercept":"OPTINTERCEPT:",
+        "optlanduse":"OPTLANDUSE:",
+        "optluinterp":"OPTLUINTERP:",
+        "gfluxoption":"GFLUXOPTION:",
+        "metdataoption":"METDATAOPTION:",
+        "convertdata":"CONVERTDATA:",
+        "optbedrock":"OPTBEDROCK:",
+        "widthinterpolation":"WIDTHINTERPOLATION:",
+        "optgwfile":"OPTGWFILE:",
+        "optrunon":"OPTRUNON:",
+        "optreservoir":"OPTRESERVOIR:",
+        "optsoiltype":"OPTSOILTYPE:",
+        "optspatial":"OPTSPATIAL:",
+        "optgroundwater":"OPTGROUNDWATER:",
+        "optinterhydro":"OPTINTERHYDRO:",
+        "optheader":"OPTHEADER:",
+        "optsnow":"OPTSNOW:",
+        "inputdatafile":"INPUTDATAFILE:",
+        "inputtime":"INPUTTIME:",
+        "arcinfofilename":"ARCINFOFILENAME:",
+        "pointfilename":"POINTFILENAME:",
+        "soiltablename":"SOILTABLENAME:",
+        "soilmapname":"SOILMAPNAME:",
+        "landtablename":"LANDTABLENAME:",
+        "landmapname":"LANDMAPNAME:",
+        "gwaterfile":"GWATERFILE:",
+        "demfile":"DEMFILE:",
+        "rainfile":"RAINFILE:",
+        "rainextension":"RAINEXTENSION:",
+        "depthtobedrock":"DEPTHTOBEDROCK:",
+        "bedrockfile":"BEDROCKFILE:",
+        "lugrid":"LUGRID:",
+        "tlinke":"TLINKE:",
+        "minsntemp":"MINSNTEMP:",
+        "snliqfrac":"SNLIQFRAC:",
+        "templapse":"TEMPLAPSE:",
+        "preclapse":"PRECLAPSE:",
+        "hydrometstations":"HYDROMETSTATIONS:",
+        "hydrometgrid":"HYDROMETGRID:",
+        "hydrometconvert":"HYDROMETCONVERT:",
+        "hydrometbasename":"HYDROMETBASENAME:",
+        "gaugestations":"GAUGESTATIONS:",
+        "gaugeconvert":"GAUGECONVERT:",
+        "gaugebasename":"GAUGEBASENAME:",
+        "outhydroextension":"OUTHYDROEXTENSION:",
+        "ribshydoutput":"RIBSHYDOUTPUT:",
+        "nodeoutputlist":"NODEOUTPUTLIST:",
+        "hydronodelist":"HYDRONODELIST:",
+        "outletnodelist":"OUTLETNODELIST:",
+        "outfilename":"OUTFILENAME:",
+        "outhydrofilename":"OUTHYDROFILENAME:",
+        "forecastmode":"FORECASTMODE:",
+        "forecasttime":"FORECASTTIME:",
+        "forecastleadtime":"FORECASTLEADTIME:",
+        "forecastlength":"FORECASTLENGTH:",
+        "forecastfile":"FORECASTFILE:",
+        "climatology":"CLIMATOLOGY:",
+        "raindistribution":"RAINDISTRIBUTION:",
+        "stochasticmode":"STOCHASTICMODE:",
+        "pmean":"PMEAN:",
+        "stdur":"STDUR:",
+        "istdur":"ISTDUR:",
+        "seed":"SEED:",
+        "period":"PERIOD:",
+        "maxpmean":"MAXPMEAN:",
+        "maxstdurmn":"MAXSTDURMN:",
+        "maxistdurmn":"MAXISTDURMN:",
+        "weathertablename":"WEATHERTABLENAME:",
+        "restartmode":"RESTARTMODE:",
+        "restartintrvl":"RESTARTINTRVL:",
+        "restartdir":"RESTARTDIR:",
+        "restartfile":"RESTARTFILE:",
+        "parallelmode":"PARALLELMODE:",
+        "graphoption":"GRAPHOPTION:",
+        "graphfile":"GRAPHFILE:",
+        "optviz":"OPTVIZ:",
+        "outvizfilename":"OUTVIZFILENAME:"
+        }
 
 class Simulation:
     """
@@ -214,6 +310,64 @@ class Simulation:
     """
     def __init__(self, model_instance):
         self.model_instance = model_instance
+
+    def run_simulation(self,executable,input_file,mpi_command=None,tribs_flags=None,log_path=None,store_input=None):
+        """
+        Run a tRIBS model simulation with optional arguments.
+
+        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
+        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
+        the tRIBS bindary is executed. You can pass the location of the input file and executable as paths, in which case
+        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
+        Optional arguments can be passed to store
+
+        Args:
+            binary_path (str): The path to the binary model executable.
+            control_file_path (str): The path to the input control file for the binary.
+            optional_args (str): Optional arguments to pass to the binary.
+
+        Returns:
+            int: The return code of the binary model simulation.
+        """
+        # Define the relative path to the binary or command
+        relative_path = "../my_command"
+
+        # Get the absolute path by resolving the relative path
+        absolute_path = os.path.abspath(relative_path)
+
+        # Now, you can use subprocess.run() with the absolute path
+        result = subprocess.run([absolute_path, "arg1", "arg2"],
+
+        # Verify that the binary and control file exist
+        if not os.path.exists(binary_path):
+            raise FileNotFoundError(f"Binary not found at {binary_path}")
+        if not os.path.exists(control_file_path):
+            raise FileNotFoundError(f"Control file not found at {control_file_path}")
+
+        # Construct the command to run
+        command = [binary_path, control_file_path] + list(optional_args)
+
+        try:
+            # Run the binary model simulation
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            # Wait for the process to finish and get the return code
+            return_code = process.returncode
+
+            # Print the stdout and stderr if needed
+            if stdout:
+                print("Standard Output:")
+                print(stdout.decode())
+            if stderr:
+                print("Standard Error:")
+                print(stderr.decode())
+
+            return return_code
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error running the binary: {e}")
+            return e.returncode
 
 
 # POST-PROCESSING NESTED CLASS: RESULTS
