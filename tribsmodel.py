@@ -65,45 +65,8 @@ class Model(object):
     """
 
     def __init__(self):
-        # fields
-        self.input_options = None
-        self.create_input()
-
         # nested classes
         self.Simulation = Simulation(self)
-
-    # CONSTRUCTOR AND BASIC I/O FUNCTIONS
-    def read_input_file(self,file_path):
-        """
-        Updates input_options with specified input file.
-        """
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()  # Remove leading/trailing whitespace
-            for key in self.input_options.keys():
-                # Convert key to lowercase for case-insensitive comparison
-                key_lower = key.lower()
-                # Convert line to lowercase for case-insensitive comparison
-                line_lower = line.lower()
-                if line_lower.startswith(key_lower):
-                    # Extract the portion of the line after the key
-                    if i + 1 < len(lines):
-                        # Extract the value from the next line
-                        value = lines[i + 1].strip()
-                        self.input_options[key]['value'] = value
-            i += 1
-
-    def write_input_file(self, output_file_path):
-        with open(output_file_path, 'w') as output_file:
-            for key, subdict in self.input_options.items():
-                if "key_word" in subdict and "value" in subdict:
-                    keyword = subdict["key_word"]
-                    value = subdict["value"]
-                    output_file.write(f"{keyword}\n")
-                    output_file.write(f"{value}\n\n")
 
     def read_soil_table(self):
         pass
@@ -111,6 +74,285 @@ class Model(object):
     def read_landuse_table(self):
         pass
 
+    @staticmethod
+    def get_input_var(file_path,var):
+        """
+        Read variable specified by var from .in file.
+
+        This function reads in the line following var, where var is required keyword or argument contained in the tRIBS
+        .in input file.
+
+        Parameters:
+            file_path (str): Path to input file
+            var (str): a keyword or argument from the .in file. Alternatively the keyword can be past from input_options
+        """
+        pass
+class Simulation:
+    """
+    A tRIBS simulation class.
+
+    This class provides a framework for running individual tRIBS model simulations. It takes an instance of Class Model
+    and creates a subdirectory to store simulation information including, the individual model input files, simulation
+    logs, and finally executes the tRIBS binary with specified conditions.
+
+
+    Attributes:
+
+    Methods:
+
+    Example:
+        Provide an example of how to create and use an instance of this class
+
+    """
+
+    def __init__(self, model_instance):
+        self.model_instance = model_instance
+
+        # nested classes
+        self.Results = Results(self)
+        self.Input = Input(self)
+
+    def run_simulation(self, executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
+                       store_input=None):
+        """
+        Run a tRIBS model simulation with optional arguments.
+
+        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
+        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
+        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
+        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
+        Optional arguments can be passed to store
+
+        Args:
+            binary_path (str): The path to the binary model executable.
+            control_file_path (str): The path to the input control file for the binary.
+            optional_args (str): Optional arguments to pass to the binary.
+
+        Returns:
+            int: The return code of the binary model simulation.
+        """
+        command = [executable, input_file]
+        subprocess.run(command)
+
+
+# POST-PROCESSING NESTED CLASS: RESULTS
+class Results:
+    """
+    A tRIBS Results Class.
+
+    This class provides a framework for analyzing and visualizing individual tRIBS simulations. It takes an instance of
+    Class Simulation and provides time-series and water balance analysis of the model results.
+
+
+    Attributes:
+
+    Methods:
+
+    Example:
+        Provide an example of how to create and use an instance of this class
+
+    """
+
+    def __init__(self, sim):
+        self.sim = sim
+        self.input = sim.Input
+        self.element_results = None
+
+    def setup_element_results(self):
+        """
+        Function assigns a dictionary to self as self.element_results. The keys in the dictionary represent a data
+        frame with the content of the .invpixel file and each subsequent node. Key for .invpixel is "invar",
+        and for nodes is simply the node ID. For each node this function reads in element file and create data frame
+        of results and is assigned to the aforementioned dictionary.
+        """
+        # read in node list
+        nodes = self.sim_instance.read_node_list()
+
+        # read in .ivpixel
+        invar_path = self.sim_instance.results_path + ".ivpixel"
+        invar_data_frame = pd.read_csv(invar_path, sep=r"\s+", header=0)
+        self.element_results = {"invar": invar_data_frame}
+
+        # for each node read in element file read and set up a dictionary containing node
+        for n in nodes:
+            self.element_results.update({n: self.read_element_files(n)})
+
+    def read_element_files(self, node):
+        """
+        Reads in .pixel from tRIBS model results and updates hourly timestep to time
+        """
+        element_results_file = self.sim_instance.results_path + str(
+            node) + ".pixel"  # need to add catch for parallel runs and if file doesn't exist
+        results_data_frame = pd.read_csv(element_results_file, sep=r"\s+", header=0)
+
+        # update time from hourly time step to date
+        starting_date = self.sim_instance.startdate
+        date = self.sim_instance.convert_to_datetime(starting_date)
+        dt = pd.to_timedelta(results_data_frame['Time_hr'], unit='h')
+        results_data_frame['Time_hr'] = [date + step for step in dt]
+
+        return results_data_frame
+
+    def create_element_water_balance(self, method):
+        """
+        This function loops through element_results and assigns water_balance as second item in the list for a given
+        node/key. The user can specify a method for calculating the time frames over which the water balance is
+        calculated.
+        """
+        # read in node list
+        nodes = self.sim.input.read_node_list(self.sim.input['nodeoutputlist'])
+        invar_data_frame = self.element_results['invar']
+        for n in nodes:
+            porosity = invar_data_frame.Porosity[invar_data_frame.NodeID == int(n)].values[0]
+            element_area = invar_data_frame.Area_m_sq[invar_data_frame.NodeID == int(n)].values[0]
+            waterbalance = self.run_element_water_balance(self.element_results[n], porosity, element_area, method)
+            self.element_results.update({n: [self.element_results[n], waterbalance]})
+
+    # WATER BALANCE FUNCTIONS
+    def run_element_water_balance(self, data, porosity, element_area, method):
+        """
+        creates a dictionary with water balance calculated specified in method: "water_year",  segments time by
+        water year and discards results that do not start first or end on last water year in data. "year",
+        just segments based on year, "month" segments base on month, and "cold_warm",segments on cold (Oct-April)
+        and warm season (May-Sep).
+        """
+
+        begin, end, years = self.water_balance_dates(data, method)
+
+        for n in range(0, len(years)):
+            if n == 0:
+                waterbalance = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
+            else:
+                temp = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
+
+                for key, val in temp.items():
+
+                    if key in waterbalance:
+                        waterbalance[key] = np.append(waterbalance[key], val)
+
+        return waterbalance, years
+
+    @staticmethod
+    def estimate_element_water_balance(element_data_frame, begin, end, porosity, element_area):
+        """
+        Computes water balance calculations for an individual computational element or node over a specified time frame. Data = pandas data
+        frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
+        porosity is well, porosity, and element area is surface area of voronoi polygon. Returns a dictionary with
+        individual water components, keys with the prescript d indicate change in storage (i.e. delta) and n
+        indicates net cumulative flux.
+        """
+
+        # logical index for calculating water balance
+        begin_id = element_data_frame['Time_hr'].values == begin
+        end_id = element_data_frame['Time_hr'].values == end
+        duration_id = (element_data_frame['Time_hr'].values >= begin) & (
+                element_data_frame['Time_hr'].values <= end)
+
+        # return dictionary with values
+        waterbalance = {}
+
+        # Store ET flux as series due to complexity
+        ET = element_data_frame['EvpTtrs_mm_h'] - (
+                element_data_frame.SnSub_cm * 10 + element_data_frame.SnEvap_cm * 10 + element_data_frame.IntSub_cm * 10)  # Snow evaporation fluxes are subtracted due to signed behavior in snow module
+
+        # calculate individual water balance components
+        waterbalance.update(
+            {'dUnsat': element_data_frame.Mu_mm.values[end_id][0] - element_data_frame.Mu_mm.values[begin_id][
+                0]})  # [0] converts from array to float
+        waterbalance.update(
+            {'dSat': (element_data_frame.Nwt_mm.values[begin_id][0] - element_data_frame.Nwt_mm.values[end_id][
+                0]) * porosity})
+        waterbalance.update({'dCanopySWE': (10 * (
+                element_data_frame.IntSWEq_cm.values[end_id][0] - element_data_frame.IntSWEq_cm.values[begin_id][
+            0]))})  # convert from cm to mm
+        waterbalance.update({'dSWE': (10 * (
+                element_data_frame.SnWE_cm.values[end_id][0] - element_data_frame.SnWE_cm.values[begin_id][0]))})
+        waterbalance.update({'dCanopy': element_data_frame.CanStorage_mm.values[end_id][0] -
+                                        element_data_frame.CanStorage_mm.values[begin_id][0]})
+        waterbalance.update({'nP': np.sum(element_data_frame['Rain_mm_h'].values[duration_id])})
+        waterbalance.update({'nET': np.sum(ET.values[duration_id])})
+        waterbalance.update({'nQsurf': np.sum(element_data_frame['Srf_Hour_mm'].values[duration_id])})
+        waterbalance.update(
+            {'nQunsat': np.sum(element_data_frame['QpIn_mm_h'].values[duration_id]) - np.sum(
+                element_data_frame['QpOut_mm_h'].values[duration_id])})
+        waterbalance.update(
+            {'nQsat': np.sum(
+                element_data_frame['GWflx_m3_h'].values[
+                    duration_id]) / element_area * 1000})  # convert from m^3/h to mm/h
+
+        return waterbalance
+
+    @staticmethod
+    def water_balance_dates(results_data_frame, method):
+        """
+        data = pandas data frame of .pixel file, methods select approach for segmenting data['Time_hr'].
+        "water_year", segments time frame by water year and discards results that do not start first or end on
+        last water year in data. "year", just segments based on year, "month" segments base on month,
+        and "cold_warm",segments on cold (Oct-April) and warm season (May-Sep).
+        """
+
+        min_date = min(results_data_frame.Time_hr)
+        max_date = max(results_data_frame.Time_hr)
+
+        if method == "water_year":
+            years = np.arange(min_date.year, max_date.year)
+            begin_dates = [pd.Timestamp(year=x, month=10, day=1, hour=0, minute=0, second=0) for x in years]
+            years += 1
+            end_dates = [pd.Timestamp(year=x, month=9, day=30, hour=23, minute=0, second=0) for x in years]
+
+            # make sure water years are in data set
+            while begin_dates[0] < min_date:
+                begin_dates.pop(0)
+                end_dates.pop(0)
+
+            while end_dates[len(end_dates) - 1] > max_date:
+                begin_dates.pop(len(end_dates) - 1)
+                end_dates.pop(len(end_dates) - 1)
+
+        if method == "year":
+            years = np.arange(min_date.year, max_date.year)
+            begin_dates = [pd.Timestamp(year=x, month=1, day=1, hour=0, minute=0, second=0) for x in years]
+            end_dates = [pd.Timestamp(year=x, month=12, day=31, hour=23, minute=0, second=0) for x in years]
+
+            # adjust start date according to min_date
+            begin_dates[0] = min_date
+
+            # add ending date according to end_date
+            end_dates.append(max_date)
+
+            # add last year to years
+            years = np.append(years, max_date.year)
+
+        if method == "cold_warm":
+            years = np.arange(min_date.year, max_date.year + 1)
+            begin_dates = [[pd.Timestamp(year=x, month=5, day=1, hour=0, minute=0, second=0),
+                            pd.Timestamp(year=x, month=10, day=1, hour=0, minute=0, second=0)] for x in years]
+            begin_dates = [date for sublist in begin_dates for date in sublist]
+            end_dates = [[pd.Timestamp(year=x, month=9, day=30, hour=23, minute=0, second=0),
+                          pd.Timestamp(year=x + 1, month=4, day=30, hour=23, minute=0, second=0)] for x in years]
+            end_dates = [date for sublist in end_dates for date in sublist]
+
+            # make sure season are in data set
+            while begin_dates[0] < min_date:
+                begin_dates.pop(0)
+                end_dates.pop(0)
+
+            while end_dates[len(end_dates) - 1] > max_date:
+                begin_dates.pop(len(end_dates) - 1)
+                end_dates.pop(len(end_dates) - 1)
+
+        # Update date time to reflect middle of period over which the waterbalance is calculated
+        years = [x + (y - x) / 2 for x, y in zip(begin_dates, end_dates)]
+        return begin_dates, end_dates, years
+
+class Input(object):
+        # fields
+    def __init__(self,model_instance):
+        self.model_instance = model_instance
+        self.options = None
+        self.create_input()
+
+    # CONSTRUCTOR AND BASIC I/O FUNCTIONS
     def read_node_list(self, file_path):
         """
         Returns node list provide by .dat file.
@@ -171,19 +413,38 @@ class Model(object):
         second = int(starting_date[14:16])
         date = pd.Timestamp(year=year, month=month, day=day, minute=minute)
         return date
-    @staticmethod
-    def get_input_var(file_path,var):
-        """
-        Read variable specified by var from .in file.
 
-        This function reads in the line following var, where var is required keyword or argument contained in the tRIBS
-        .in input file.
-
-        Parameters:
-            file_path (str): Path to input file
-            var (str): a keyword or argument from the .in file. Alternatively the keyword can be past from input_options
+    def read_input_file(self, file_path):
         """
-        pass
+        Updates input_options with specified input file.
+        """
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()  # Remove leading/trailing whitespace
+            for key in self.options.keys():
+                # Convert key to lowercase for case-insensitive comparison
+                key_lower = key.lower()
+                # Convert line to lowercase for case-insensitive comparison
+                line_lower = line.lower()
+                if line_lower.startswith(key_lower):
+                    # Extract the portion of the line after the key
+                    if i + 1 < len(lines):
+                        # Extract the value from the next line
+                        value = lines[i + 1].strip()
+                        self.options[key]['value'] = value
+            i += 1
+
+    def write_input_file(self, output_file_path):
+        with open(output_file_path, 'w') as output_file:
+            for key, subdict in self.options.items():
+                if "key_word" in subdict and "value" in subdict:
+                    keyword = subdict["key_word"]
+                    value = subdict["value"]
+                    output_file.write(f"{keyword}\n")
+                    output_file.write(f"{value}\n\n")
 
     def create_input(self):
         """
@@ -196,10 +457,10 @@ class Model(object):
         Example:
             >>> from tribsmodel import Model
             >>> m = Model()
-            >>> m.input_options
+            >>> m.options
             {'startdate': 'STARTDATE:', 'runtime': 'RUNTIME:', 'rainsearch': 'RAINSEARCH:',...
         """
-        self.input_options = {
+        self.options = {
             "startdate": {"key_word": "STARTDATE:", "describe": "Starting time (MM/DD/YYYY/HH/MM)", "value": None},
             "runtime": {"key_word": "RUNTIME:", "describe": "simulation length in hours", "value": None},
             "rainsearch": {"key_word": "RAINSEARCH:", "describe": "Rainfall search interval (hours)", "value": 24},
@@ -405,260 +666,3 @@ class Model(object):
             "outvizfilename": {"key_word": "OUTVIZFILENAME:", "describe": "Filename for viz binary files",
                                "value": None}
         }
-
-
-class Simulation:
-    """
-    A tRIBS simulation class.
-
-    This class provides a framework for running individual tRIBS model simulations. It takes an instance of Class Model
-    and creates a subdirectory to store simulation information including, the individual model input files, simulation
-    logs, and finally executes the tRIBS binary with specified conditions.
-
-
-    Attributes:
-
-    Methods:
-
-    Example:
-        Provide an example of how to create and use an instance of this class
-
-    """
-
-    def __init__(self, model_instance):
-        self.model_instance = model_instance
-
-        # nested classes
-        self.Results = Results(self)
-
-    def run_simulation(self, executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
-                       store_input=None):
-        """
-        Run a tRIBS model simulation with optional arguments.
-
-        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
-        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
-        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
-        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
-        Optional arguments can be passed to store
-
-        Args:
-            binary_path (str): The path to the binary model executable.
-            control_file_path (str): The path to the input control file for the binary.
-            optional_args (str): Optional arguments to pass to the binary.
-
-        Returns:
-            int: The return code of the binary model simulation.
-        """
-        command = [executable, input_file]
-        subprocess.run(command)
-
-
-# POST-PROCESSING NESTED CLASS: RESULTS
-class Results:
-    """
-    A tRIBS Results Class.
-
-    This class provides a framework for analyzing and visualizing individual tRIBS simulations. It takes an instance of
-    Class Simulation and provides time-series and water balance analysis of the model results.
-
-
-    Attributes:
-
-    Methods:
-
-    Example:
-        Provide an example of how to create and use an instance of this class
-
-    """
-
-    def __init__(self, sim_instance):
-        self.sim_instance = sim_instance
-        self.element_results = None
-
-    def setup_element_results(self):
-        """
-        Function assigns a dictionary to self as self.element_results. The keys in the dictionary represent a data
-        frame with the content of the .invpixel file and each subsequent node. Key for .invpixel is "invar",
-        and for nodes is simply the node ID. For each node this function reads in element file and create data frame
-        of results and is assigned to the aforementioned dictionary.
-        """
-        # read in node list
-        nodes = self.sim_instance.read_node_list()
-
-        # read in .ivpixel
-        invar_path = self.sim_instance.results_path + ".ivpixel"
-        invar_data_frame = pd.read_csv(invar_path, sep=r"\s+", header=0)
-        self.element_results = {"invar": invar_data_frame}
-
-        # for each node read in element file read and set up a dictionary containing node
-        for n in nodes:
-            self.element_results.update({n: self.read_element_files(n)})
-
-    def read_element_files(self, node):
-        """
-        Reads in .pixel from tRIBS model results and updates hourly timestep to time
-        """
-        element_results_file = self.sim_instance.results_path + str(
-            node) + ".pixel"  # need to add catch for parallel runs and if file doesn't exist
-        results_data_frame = pd.read_csv(element_results_file, sep=r"\s+", header=0)
-
-        # update time from hourly time step to date
-        starting_date = self.sim_instance.startdate
-        date = self.sim_instance.convert_to_datetime(starting_date)
-        dt = pd.to_timedelta(results_data_frame['Time_hr'], unit='h')
-        results_data_frame['Time_hr'] = [date + step for step in dt]
-
-        return results_data_frame
-
-    def create_element_water_balance(self, method):
-        """
-        This function loops through element_results and assigns water_balance as second item in the list for a given
-        node/key. The user can specify a method for calculating the time frames over which the water balance is
-        calculated.
-        """
-        # read in node list
-        nodes = self.sim_instance.read_node_list()
-        invar_data_frame = self.element_results['invar']
-        for n in nodes:
-            porosity = invar_data_frame.Porosity[invar_data_frame.NodeID == int(n)].values[0]
-            element_area = invar_data_frame.Area_m_sq[invar_data_frame.NodeID == int(n)].values[0]
-            waterbalance = self.run_element_water_balance(self.element_results[n], porosity, element_area, method)
-            self.element_results.update({n: [self.element_results[n], waterbalance]})
-
-    # WATER BALANCE FUNCTIONS
-    def run_element_water_balance(self, data, porosity, element_area, method):
-        """
-        creates a dictionary with water balance calculated specified in method: "water_year",  segments time by
-        water year and discards results that do not start first or end on last water year in data. "year",
-        just segments based on year, "month" segments base on month, and "cold_warm",segments on cold (Oct-April)
-        and warm season (May-Sep).
-        """
-
-        begin, end, years = self.water_balance_dates(data, method)
-
-        for n in range(0, len(years)):
-            if n == 0:
-                waterbalance = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
-            else:
-                temp = self.estimate_element_water_balance(data, begin[n], end[n], porosity, element_area)
-
-                for key, val in temp.items():
-
-                    if key in waterbalance:
-                        waterbalance[key] = np.append(waterbalance[key], val)
-
-        return waterbalance, years
-
-    @staticmethod
-    def estimate_element_water_balance(element_data_frame, begin, end, porosity, element_area):
-        """
-        Computes water balance calculations for an individual computational element or node over a specified time frame. Data = pandas data
-        frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
-        porosity is well, porosity, and element area is surface area of voronoi polygon. Returns a dictionary with
-        individual water components, keys with the prescript d indicate change in storage (i.e. delta) and n
-        indicates net cumulative flux.
-        """
-
-        # logical index for calculating water balance
-        begin_id = element_data_frame['Time_hr'].values == begin
-        end_id = element_data_frame['Time_hr'].values == end
-        duration_id = (element_data_frame['Time_hr'].values >= begin) & (
-                element_data_frame['Time_hr'].values <= end)
-
-        # return dictionary with values
-        waterbalance = {}
-
-        # Store ET flux as series due to complexity
-        ET = element_data_frame['EvpTtrs_mm_h'] - (
-                element_data_frame.SnSub_cm * 10 + element_data_frame.SnEvap_cm * 10 + element_data_frame.IntSub_cm * 10)  # Snow evaporation fluxes are subtracted due to signed behavior in snow module
-
-        # calculate individual water balance components
-        waterbalance.update(
-            {'dUnsat': element_data_frame.Mu_mm.values[end_id][0] - element_data_frame.Mu_mm.values[begin_id][
-                0]})  # [0] converts from array to float
-        waterbalance.update(
-            {'dSat': (element_data_frame.Nwt_mm.values[begin_id][0] - element_data_frame.Nwt_mm.values[end_id][
-                0]) * porosity})
-        waterbalance.update({'dCanopySWE': (10 * (
-                element_data_frame.IntSWEq_cm.values[end_id][0] - element_data_frame.IntSWEq_cm.values[begin_id][
-            0]))})  # convert from cm to mm
-        waterbalance.update({'dSWE': (10 * (
-                element_data_frame.SnWE_cm.values[end_id][0] - element_data_frame.SnWE_cm.values[begin_id][0]))})
-        waterbalance.update({'dCanopy': element_data_frame.CanStorage_mm.values[end_id][0] -
-                                        element_data_frame.CanStorage_mm.values[begin_id][0]})
-        waterbalance.update({'nP': np.sum(element_data_frame['Rain_mm_h'].values[duration_id])})
-        waterbalance.update({'nET': np.sum(ET.values[duration_id])})
-        waterbalance.update({'nQsurf': np.sum(element_data_frame['Srf_Hour_mm'].values[duration_id])})
-        waterbalance.update(
-            {'nQunsat': np.sum(element_data_frame['QpIn_mm_h'].values[duration_id]) - np.sum(
-                element_data_frame['QpOut_mm_h'].values[duration_id])})
-        waterbalance.update(
-            {'nQsat': np.sum(
-                element_data_frame['GWflx_m3_h'].values[
-                    duration_id]) / element_area * 1000})  # convert from m^3/h to mm/h
-
-        return waterbalance
-
-    @staticmethod
-    def water_balance_dates(results_data_frame, method):
-        """
-        data = pandas data frame of .pixel file, methods select approach for segmenting data['Time_hr'].
-        "water_year", segments time frame by water year and discards results that do not start first or end on
-        last water year in data. "year", just segments based on year, "month" segments base on month,
-        and "cold_warm",segments on cold (Oct-April) and warm season (May-Sep).
-        """
-
-        min_date = min(results_data_frame.Time_hr)
-        max_date = max(results_data_frame.Time_hr)
-
-        if method == "water_year":
-            years = np.arange(min_date.year, max_date.year)
-            begin_dates = [pd.Timestamp(year=x, month=10, day=1, hour=0, minute=0, second=0) for x in years]
-            years += 1
-            end_dates = [pd.Timestamp(year=x, month=9, day=30, hour=23, minute=0, second=0) for x in years]
-
-            # make sure water years are in data set
-            while begin_dates[0] < min_date:
-                begin_dates.pop(0)
-                end_dates.pop(0)
-
-            while end_dates[len(end_dates) - 1] > max_date:
-                begin_dates.pop(len(end_dates) - 1)
-                end_dates.pop(len(end_dates) - 1)
-
-        if method == "year":
-            years = np.arange(min_date.year, max_date.year)
-            begin_dates = [pd.Timestamp(year=x, month=1, day=1, hour=0, minute=0, second=0) for x in years]
-            end_dates = [pd.Timestamp(year=x, month=12, day=31, hour=23, minute=0, second=0) for x in years]
-
-            # adjust start date according to min_date
-            begin_dates[0] = min_date
-
-            # add ending date according to end_date
-            end_dates.append(max_date)
-
-            # add last year to years
-            years = np.append(years, max_date.year)
-
-        if method == "cold_warm":
-            years = np.arange(min_date.year, max_date.year + 1)
-            begin_dates = [[pd.Timestamp(year=x, month=5, day=1, hour=0, minute=0, second=0),
-                            pd.Timestamp(year=x, month=10, day=1, hour=0, minute=0, second=0)] for x in years]
-            begin_dates = [date for sublist in begin_dates for date in sublist]
-            end_dates = [[pd.Timestamp(year=x, month=9, day=30, hour=23, minute=0, second=0),
-                          pd.Timestamp(year=x + 1, month=4, day=30, hour=23, minute=0, second=0)] for x in years]
-            end_dates = [date for sublist in end_dates for date in sublist]
-
-            # make sure season are in data set
-            while begin_dates[0] < min_date:
-                begin_dates.pop(0)
-                end_dates.pop(0)
-
-            while end_dates[len(end_dates) - 1] > max_date:
-                begin_dates.pop(len(end_dates) - 1)
-                end_dates.pop(len(end_dates) - 1)
-
-        # Update date time to reflect middle of period over which the waterbalance is calculated
-        years = [x + (y - x) / 2 for x, y in zip(begin_dates, end_dates)]
-        return begin_dates, end_dates, years
