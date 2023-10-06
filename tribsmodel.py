@@ -492,6 +492,9 @@ class Results(Model):
         # Assign column names to the DataFrame
         results_data_frame.columns = column_names
 
+        # Add units as metadata
+        results_data_frame.attrs["units"] = units
+
         # # update time from hourly time step to date
         starting_date = self.options["startdate"]["value"]
         date = self.convert_to_datetime(starting_date)
