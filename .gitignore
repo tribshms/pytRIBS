@@ -2,3 +2,5 @@
 __pycache__
 HJ_BenchMark/results/*
 HJ_BenchMark/src/*
+HJ_BenchMark/build/
+HJ_BenchMark/tRIBS

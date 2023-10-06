@@ -540,14 +540,13 @@ class Results(Model):
         date = self.convert_to_datetime(starting_date)
         dt = pd.to_timedelta(results_data_frame['Time_hr'], unit='h')
         results_data_frame['Time'] = [date + step for step in dt]
-        results_data_frame.drop("Time_hr",inplace=True)
 
         return results_data_frame
 
-    def get_mrf_water_balance(self, method, porosity, bedrock):
+    def get_mrf_water_balance(self, method, porosity, bedrock, drainage_area):
         """
         """
-        waterbalance = self.run_mrf_water_balance(self.mrf, porosity, bedrock, method)
+        waterbalance = self.run_mrf_water_balance(self.mrf, porosity, bedrock, drainage_area, method)
         var = {"mrf": self.mrf, "waterbalance": waterbalance}
         self.mrf = var
 
@@ -618,10 +617,10 @@ class Results(Model):
         """
 
         # logical index for calculating water balance
-        begin_id = element_data_frame['Time_hr'].values == begin
-        end_id = element_data_frame['Time_hr'].values == end
-        duration_id = (element_data_frame['Time_hr'].values >= begin) & (
-                element_data_frame['Time_hr'].values <= end)
+        begin_id = element_data_frame['Time'].values == begin
+        end_id = element_data_frame['Time'].values == end
+        duration_id = (element_data_frame['Time'].values >= begin) & (
+                element_data_frame['Time'].values <= end)
 
         # return dictionary with values
         waterbalance = {}
@@ -657,7 +656,7 @@ class Results(Model):
 
         return waterbalance
 
-    def run_mrf_water_balance(self, data, porosity, bedrock, method):
+    def run_mrf_water_balance(self, data, porosity, bedrock, drainage_area, method):
         """
 
         :param data:
@@ -670,9 +669,9 @@ class Results(Model):
 
         for n in range(0, len(timeframe)):
             if n == 0:
-                waterbalance = self.mrf_wb_components(data, begin[n], end[n], porosity, bedrock)
+                waterbalance = self.mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
             else:
-                temp = self.mrf_wb_components(data, begin[n], end[n], porosity, bedrock)
+                temp = self.mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
 
                 for key, val in temp.items():
 
@@ -680,21 +679,19 @@ class Results(Model):
                         waterbalance[key] = np.append(waterbalance[key], val)
 
         waterbalance.update({"Time": timeframe})
-        print(waterbalance)
+        # change in storage
+        waterbalance.update({"dS": waterbalance['dUnsat'] + waterbalance['dSat'] + waterbalance['dCanopySWE'] +
+                                   waterbalance['dSWE'] + waterbalance['dCanopy']})
+        # net fluxes from surface and saturated and unsaturated zone
+        waterbalance.update({'nQ': waterbalance['nQsurf'] + waterbalance['nQunsat'] + waterbalance['nQsat']})
+
         waterbalance = pd.DataFrame.from_dict(waterbalance)
         waterbalance.set_index('Time', inplace=True)
-
-        waterbalance['dS'] = np.add(np.add(waterbalance['dUnsat'], waterbalance['dSat'], waterbalance['dCanopySWE']),
-                                    waterbalance['dSWE'],
-                                    waterbalance['dCanopy'])  # change in storage
-
-        waterbalance['nQ'] = np.add(waterbalance['nQsurf'], waterbalance['nQunsat'],
-                                    waterbalance['nQsat'])  # net fluxes from surface and saturated and unsaturated zone
 
         return waterbalance
 
     @staticmethod
-    def mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth):
+    def mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth, drainage_area):
         """
         Computes water balance calculations for an individual computational mrf or node over a specified time frame. Data = pandas data
         frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
@@ -716,8 +713,8 @@ class Results(Model):
         # Snow evaporation fluxes are subtracted due to signed behavior in snow module
         evapotrans = mrf_data_frame.MET - 10 * (
                 mrf_data_frame.AvSnSub + mrf_data_frame.AvSnEvap + mrf_data_frame.AvInSu)
-        unsaturated = mrf_data_frame.MSMU * porosity * mrf_data_frame.MDGW
-        saturated = (bedrock_depth - mrf_data_frame.MDGW) * porosity
+        unsaturated = mrf_data_frame.MSMU.values * porosity * mrf_data_frame.MDGW.values
+        saturated = (bedrock_depth - mrf_data_frame.MDGW.values) * porosity
 
         # calculate individual water balance components
         waterbalance.update(
@@ -732,7 +729,7 @@ class Results(Model):
         waterbalance.update({'dCanopy': 0})  # TODO update mrf w/ mean intercepted canpoy storaage
         waterbalance.update({'nP': np.sum(mrf_data_frame.MAP.values[duration_id])})
         waterbalance.update({'nET': np.sum(evapotrans.values[duration_id])})
-        waterbalance.update({'nQsurf': np.sum(mrf_data_frame.Srf.values[duration_id])})
+        waterbalance.update({'nQsurf': np.sum(mrf_data_frame.Srf.values[duration_id] * 3600 * 1000 / drainage_area)})
         waterbalance.update({'nQunsat': 0})  # Assumption in model is closed boundaries at divide and outled
         waterbalance.update({'nQsat': 0})
 
