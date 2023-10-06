@@ -65,11 +65,73 @@ class Model(object):
     """
 
     def __init__(self):
-        self.options = None
+        # attributes
+        self.options = None #input options for tRIBS model run
+        self.descriptor_files = {} #dict to store descriptor files
+        self.grid_data_files = {}  #dict to store .gdf files
         self.create_input()
         # nested classes
         self.Results = Results(self)
 
+    # SIMULATION METHODS
+
+    @staticmethod
+    def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
+            store_input=None):
+        """
+        Run a tRIBS model simulation with optional arguments.
+
+        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
+        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
+        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
+        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
+        Optional arguments can be passed to store
+
+        Args:
+            binary_path (str): The path to the binary model executable.
+            control_file_path (str): The path to the input control file for the binary.
+            optional_args (str): Optional arguments to pass to the binary.
+
+        Returns:
+            int: The return code of the binary model simulation.
+        """
+        command = [executable, input_file]
+        subprocess.run(command)
+
+    @staticmethod
+    def build(source_file, build_directory):
+        """
+        Run a tRIBS model simulation with optional arguments.
+
+        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
+        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
+        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
+        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
+        Optional arguments can be passed to store
+
+        Args:
+            binary_path (str): The path to the binary model executable.
+            control_file_path (str): The path to the input control file for the binary.
+            optional_args (str): Optional arguments to pass to the binary.
+
+        Returns:
+            int: The return code of the binary model simulation.
+        """
+        cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
+        subprocess.run(cmake_configure_command)
+
+        cmake_build_command = ["cmake", "--build", build_directory, "--target", "all"]
+        result = subprocess.run(cmake_build_command)
+
+        return result.returncode
+
+    def clean(self):
+        pass
+
+    def check_paths(self):
+        pass
+
+    # I/O METHODS
     @staticmethod
     def read_node_list(file_path):
         """
@@ -164,60 +226,131 @@ class Model(object):
                     output_file.write(f"{keyword}\n")
                     output_file.write(f"{value}\n\n")
 
-    @staticmethod
-    def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
-            store_input=None):
-        """
-        Run a tRIBS model simulation with optional arguments.
+    def add_descriptor_files(self):
+        self.descriptor_files.update({"precip":self.read_precip_sdf()})
+        self.descriptor_files.update({"met":self.read_met_sdf()})
 
-        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
-        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
-        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
-        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
-        Optional arguments can be passed to store
+    def read_precip_sdf(self,file_path=None ):
+        if file_path is None:
+            file_path = self.options["gaugestations"]["value"]
 
-        Args:
-            binary_path (str): The path to the binary model executable.
-            control_file_path (str): The path to the input control file for the binary.
-            optional_args (str): Optional arguments to pass to the binary.
+        station_list = []
 
-        Returns:
-            int: The return code of the binary model simulation.
-        """
-        command = [executable, input_file]
-        subprocess.run(command)
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
 
-    @staticmethod
-    def build(source_file, build_directory):
-        """
-        Run a tRIBS model simulation with optional arguments.
+        if len(lines) != 2:
+            print("Error: Number of lines does not match the expected count (2).")
+            return None
 
-        Run_simulation assumes that if relative paths are used then the binary and input file are collocated in the
-        same directory. That means for any keywords that depend on a relative path, must be specified from the directory
-        the tRIBS binary is executed. You can pass the location of the input file and executable as paths, in which case
-        the function copies the binary and input file to same directory and then deletes both after the model run is complete.
-        Optional arguments can be passed to store
+        num_stations, num_parameters = map(int, lines[0].strip().split())
 
-        Args:
-            binary_path (str): The path to the binary model executable.
-            control_file_path (str): The path to the input control file for the binary.
-            optional_args (str): Optional arguments to pass to the binary.
+        line = lines[1]
+        station_info = line.strip().split()
+        if len(station_info) == 7:
+            station_id, file_path, lat, long, record_length, num_params, elevation = station_info
+            station = {
+                "StationID": station_id,
+                "FilePath": file_path,
+                "Y": float(lat),
+                "X": float(long),
+                "RecordLength": int(record_length),
+                "NumParameters": int(num_params),
+                "Elevation": float(elevation)
+            }
+            station_list.append(station)
 
-        Returns:
-            int: The return code of the binary model simulation.
-        """
-        cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
-        subprocess.run(cmake_configure_command)
+        elif len(station_list) != num_stations:
+            print("Error: Number of stations does not match the specified count.")
+            return None
 
-        cmake_build_command = ["cmake", "--build", build_directory, "--target", "all"]
-        result = subprocess.run(cmake_build_command)
+        return station_list
 
-        return result.returncode
+    def read_precip_file(self,file_path):
+        # TODO add var for specifying Station ID
+
+        # Initialize empty lists to store datetime and precipitation rate data
+        datetime_vector = []
+        precip_rate_vector = []
+
+        # Open the file and read it line by line
+        with open(file_path, 'r') as file:
+            # Skip the header line if it exists
+            next(file, None)
+
+            for line in file:
+                # Split the line into individual values using whitespace as the delimiter
+                values = line.strip().split()
+
+                # Check if there are enough values for date and time (Year, Month, Day, Hour) and precipitation rate
+                if len(values) >= 5:
+                    year, month, day, hour, precip_rate = values[:5]
+
+                    # Combine the date and time components to create a datetime object
+                    date_time = f"{year}-{month}-{day} {hour}:00:00"
+
+                    # Append the datetime and precipitation rate to their respective lists
+                    datetime_vector.append(date_time)
+                    precip_rate_vector.append(float(precip_rate))
+
+        # Display the first few elements of the datetime and precipitation rate vectors
+        for i in range(min(5, len(datetime_vector))):
+            print(f"Datetime: {datetime_vector[i]}, Precipitation Rate: {precip_rate_vector[i]}")
+
+        return datetime_vector, precip_rate_vector
+
+    def write_precip_station(self):
+        pass
+
+    def read_met_sdf(self,file_path=None):
+        if file_path is None:
+            file_path = self.options["hydrometstations"]["value"]
+
+        station_list = []
+
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        if len(lines) != 2:
+            print("Error: Number of lines does not match the expected count (2).")
+            return None
+
+        num_stations, num_parameters = map(int, lines[0].strip().split())
+        line = lines[1]
+        station_info = line.strip().split()
+
+        if len(station_info) == 10:
+            station_id, file_path, lat, y, long, x, gmt, record_length, num_params, other = station_info
+            station = {
+                "StationID": station_id,
+                "FilePath": file_path,
+                "Lat(dd)": float(lat),
+                "X": float(x),
+                "Long(dd)": float(long),
+                "Y": float(y),
+                "GMT": int(gmt),
+                "RecordLength": int(record_length),
+                "Num_Parameters": int(num_params),
+                "Other": other
+            }
+            station_list.append(station)
+
+        elif len(station_list) != num_stations:
+            print("Error: Number of stations does not match the specified count.")
+            return None
+
+        return station_list
+
+    def write_met_station(self):
+        pass
 
     def read_soil_table(self):
         pass
-
+    def write_soil_table(self):
+        pass
     def read_landuse_table(self):
+        pass
+    def write_landuse_table(self):
         pass
 
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
