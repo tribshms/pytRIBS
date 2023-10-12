@@ -114,7 +114,7 @@ class Model(object):
         subprocess.run(command)
 
     @staticmethod
-    def build(source_file, build_directory, verbose=True):
+    def build(source_file, build_directory, verbose=True, exe="tRIBS", parallel="ON", cxx_flags="-O2"):
         """
         Run a tRIBS model simulation with optional arguments.
 
@@ -132,7 +132,32 @@ class Model(object):
         Returns:
             int: The return code of the binary model simulation.
         """
-        #TODO: add flags that can be passed to CMakeList.txt file, i.e. Parallel on or off, or compiler flags, etc.
+        # TODO: add check if build directory already exists, prompt user if they want to remove
+
+        # Allow modification of CMakeList.txt
+        modified_lines = []
+        source_file = os.path.expanduser(source_file)
+        file_path = os.path.join(source_file,"CMakeLists.txt")
+
+        # Define the variables to search for and their corresponding replacements
+        variables_to_replace = {
+            "exe": exe,
+            "parallel": parallel,
+            "cxx_flags": cxx_flags
+        }
+
+        # Read the contents of the CMakeLists.txt file and modify lines as needed
+        with open(file_path, 'r') as file:
+            for line in file:
+                for variable, value in variables_to_replace.items():
+                    if line.strip().startswith(f'set({variable} "'):
+                        line = f'set({variable} "{value}")\n'
+                modified_lines.append(line)
+
+        # Write the modified lines back to the file
+        with open(file_path, 'w') as file:
+            file.writelines(modified_lines)
+
         if verbose:
             cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
             subprocess.run(cmake_configure_command)
