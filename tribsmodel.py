@@ -74,6 +74,8 @@ class Model(object):
         self.Results = Results(self)
 
     # SIMULATION METHODS
+    def create_graph_files(self): # TODO make it so you can run meshbuilder, pearl scripts, and ksh scripts
+        pass
 
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
