@@ -66,15 +66,15 @@ class Model(object):
 
     def __init__(self):
         # attributes
-        self.options = None #input options for tRIBS model run
-        self.descriptor_files = {} #dict to store descriptor files
-        self.grid_data_files = {}  #dict to store .gdf files
+        self.options = None  # input options for tRIBS model run
+        self.descriptor_files = {}  # dict to store descriptor files
+        self.grid_data_files = {}  # dict to store .gdf files
         self.create_input()
         # nested classes
         self.Results = Results(self)
 
     # SIMULATION METHODS
-    def create_graph_files(self): # TODO make it so you can run meshbuilder, pearl scripts, and ksh scripts
+    def create_graph_files(self):  # TODO make it so you can run meshbuilder, pearl scripts, and ksh scripts
         pass
 
     @staticmethod
@@ -97,11 +97,21 @@ class Model(object):
         Returns:
             int: The return code of the binary model simulation.
         """
-        command = [executable, input_file]
+        if mpi_command is not None:
+            command = [mpi_command.split(), executable, input_file]
+        else:
+            command = [executable, input_file]
+
+        if tribs_flags is not None:
+            command.extend(tribs_flags.split())
+
+        if log_path is not None:
+            command.append(log_path)
+
         subprocess.run(command)
 
     @staticmethod
-    def build(source_file, build_directory):
+    def build(source_file, build_directory, verbose=True):
         """
         Run a tRIBS model simulation with optional arguments.
 
@@ -119,11 +129,18 @@ class Model(object):
         Returns:
             int: The return code of the binary model simulation.
         """
-        cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
-        subprocess.run(cmake_configure_command)
+        if verbose:
+            cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
+            subprocess.run(cmake_configure_command)
 
-        cmake_build_command = ["cmake", "--build", build_directory, "--target", "all"]
-        result = subprocess.run(cmake_build_command)
+            cmake_build_command = ["cmake", "--build", build_directory, "--target", "all"]
+            result = subprocess.run(cmake_build_command)
+        else:
+            cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
+            subprocess.run(cmake_configure_command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            cmake_build_command = ["cmake", "--build", build_directory, "--target", "all"]
+            result = subprocess.run(cmake_build_command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         return result.returncode
 
@@ -229,10 +246,10 @@ class Model(object):
                     output_file.write(f"{value}\n\n")
 
     def add_descriptor_files(self):
-        self.descriptor_files.update({"precip":self.read_precip_sdf()})
-        self.descriptor_files.update({"met":self.read_met_sdf()})
+        self.descriptor_files.update({"precip": self.read_precip_sdf()})
+        self.descriptor_files.update({"met": self.read_met_sdf()})
 
-    def read_precip_sdf(self,file_path=None ):
+    def read_precip_sdf(self, file_path=None):
         if file_path is None:
             file_path = self.options["gaugestations"]["value"]
 
@@ -268,7 +285,7 @@ class Model(object):
 
         return station_list
 
-    def read_precip_file(self,file_path):
+    def read_precip_file(self, file_path):
         # TODO add var for specifying Station ID
 
         # Initialize empty lists to store datetime and precipitation rate data
@@ -304,7 +321,7 @@ class Model(object):
     def write_precip_station(self):
         pass
 
-    def read_met_sdf(self,file_path=None):
+    def read_met_sdf(self, file_path=None):
         if file_path is None:
             file_path = self.options["hydrometstations"]["value"]
 
@@ -348,10 +365,13 @@ class Model(object):
 
     def read_soil_table(self):
         pass
+
     def write_soil_table(self):
         pass
+
     def read_landuse_table(self):
         pass
+
     def write_landuse_table(self):
         pass
 
