@@ -98,7 +98,8 @@ class Model(object):
             int: The return code of the binary model simulation.
         """
         if mpi_command is not None:
-            command = [mpi_command.split(), executable, input_file]
+            command = mpi_command.split()
+            command.extend([executable, input_file])
         else:
             command = [executable, input_file]
 
@@ -107,6 +108,8 @@ class Model(object):
 
         if log_path is not None:
             command.append(log_path)
+
+        print(command)
 
         subprocess.run(command)
 
@@ -129,6 +132,7 @@ class Model(object):
         Returns:
             int: The return code of the binary model simulation.
         """
+        #TODO: add flags that can be passed to CMakeList.txt file, i.e. Parallel on or off, or compiler flags, etc.
         if verbose:
             cmake_configure_command = ["cmake", "-B", build_directory, "-S", source_file]
             subprocess.run(cmake_configure_command)
