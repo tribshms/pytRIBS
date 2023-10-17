@@ -87,7 +87,7 @@ class Model(object):
 
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
-            store_input=None):
+            store_input=None, timeit = True):
         """
         Run a tRIBS model simulation with optional arguments.
 
@@ -116,6 +116,9 @@ class Model(object):
 
         if log_path is not None:
             command.append(log_path)
+
+        if timeit:
+            command.insert(0,"time")
 
         print(command)
 
