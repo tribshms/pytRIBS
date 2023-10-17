@@ -1,6 +1,11 @@
 # tribsmodel.py
 
 import numpy as np
+import geopandas as gpd
+import pyproj
+from shapely.geometry import LineString
+from shapely.geometry import Point
+from shapely.geometry import Polygon
 import argparse
 import pandas as pd
 import os
@@ -11,20 +16,20 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 
+# TODO
+# geopandas for voronoi and rasterios for rasters, gdal for raster-shapefile conversions
+# ideas on plotting up shapefiles--create overview with partioned reach, create plot of individual partions showing
+# voronoi as shapes/
+# could you plot tRIB reaches?
+
 class Model(object):
     """
     A tRIBS Model class.
 
     This class provides access to the underlying framework of a tRIBS (TIN-based Real-time Integrated Basin
-    Simulator) simulation. It includes three nested classes: Preprocessing, Simulation, and Results. The Model class
-    is initialized at the top-level to facilitate model setup, simultation, post-processing and can be used
-    for mainpulating and generating multiple simulations in an efficient manner.
-
-    The Preprocessing class allows for visualization, analysis, and bias correction of the data used in a given
-    model. The Simulation class executes the tRIBS model and implements necessary recording of model steps,
-    including preserving model logs, input files, and differences between the base model simulation. The Simulation
-    class also has the Result class nested within it to allow quick and easy visualization and analysis of model
-    results.
+    Simulator) simulation. It includes one nested class: Results. The Model class is initialized at the top-level to
+    facilitate model setup, simultation, post-processing and can be used for mainpulating and generating multiple
+    simulations in an efficient manner.
 
     Attributes:
         input_options (dict): A dictionary of the necessary keywords for a tRIBS .in file.
@@ -70,11 +75,14 @@ class Model(object):
         self.descriptor_files = {}  # dict to store descriptor files
         self.grid_data_files = {}  # dict to store .gdf files
         self.create_input()
+        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+
         # nested classes
         self.Results = Results(self)
 
     # SIMULATION METHODS
-    def create_graph_files(self):  # TODO make it so you can run meshbuilder, pearl scripts, and ksh scripts
+    def create_graph_files(
+            self):  # TODO make it so you can run meshbuilder, and same functionality as pearl scripts, and ksh scripts but using python
         pass
 
     @staticmethod
@@ -137,7 +145,7 @@ class Model(object):
         # Allow modification of CMakeList.txt
         modified_lines = []
         source_file = os.path.expanduser(source_file)
-        file_path = os.path.join(source_file,"CMakeLists.txt")
+        file_path = os.path.join(source_file, "CMakeLists.txt")
 
         # Define the variables to search for and their corresponding replacements
         variables_to_replace = {
@@ -404,7 +412,95 @@ class Model(object):
     def write_landuse_table(self):
         pass
 
+    # Visualize model domain:
+    def read_reach_file(self, filename=None):
+
+        if filename is None:
+            filename = self.options["outfilename"]["value"] + "_reach"
+
+        with open(filename, 'r') as file:
+            lines = file.readlines()
+
+        features = []
+        current_id = None
+        coordinates = []
+
+        for line in lines:
+            line = line.strip()
+            if line == "END":
+                if current_id is not None:
+                    line_string = LineString(coordinates)
+                    features.append({"id": current_id, "geometry": line_string})
+                    current_id = None
+                    coordinates = []
+            else:
+                if current_id is None:
+                    current_id = int(line)
+                else:
+                    x, y = map(float, line.split(','))
+                    coordinates.append((x, y))
+        if self.geo["EPSG"] is not None:
+            gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+        else:
+            gdf = gpd.GeoDataFrame(features)
+            print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
+
+        return gdf
+
+    def read_voi_file(self, filename=None):
+
+        if filename is None:
+            filename = self.options["outfilename"]["value"] + "_voi"
+
+        ids = []
+        polygons = []
+
+        with open(filename, 'r') as file:
+            current_id = None
+            current_points = []
+
+            for line in file:
+                line = line.strip()
+                if line == "END":
+                    if current_id is not None:
+                        ids.append(current_id)
+                        if len(current_points) >= 3:
+                            polygons.append(Polygon(current_points))
+                        current_id = None
+                        current_points = []
+                else:
+                    parts = line.split(',')
+                    if len(parts) == 3:
+                        id_, x, y = map(float, parts)
+                        current_id = id_
+                        current_points.append((x, y))
+
+
+        if not ids or not polygons:
+            raise ValueError("No valid data found in "+filename)
+
+        features = {'ID': ids, 'geometry': polygons}
+
+        if self.geo["EPSG"] is not None:
+            gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+        else:
+            gdf = gpd.GeoDataFrame(features)
+            print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
+
+        return gdf
+
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
+    def print_tags(self, tag_name):
+
+        data = self.options  # Assuming m.options is a dictionary with sub-dictionaries
+
+        # Filter sub-dictionaries where "io" is in the "tags" list
+        result = [item for item in data.values() if any(tag_name in tag for tag in item.get("tags", []))]
+
+        # Display the filtered sub-dictionaries
+        for item in result:
+            print(item)
+
     def create_input(self):
         """
         Creates a dictionary with tRIBS input options assigne to attribute input_options.
@@ -413,6 +509,18 @@ class Model(object):
         initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
         the templateVars file will need to be udpated if additional keywords are added to the .in file.
 
+        Each subdictionary has a tags key. With the tag indicating the role of the given option or variable in the model
+        simulation.
+
+        Tags:
+            time    - set parameters related to model simulation times and time steps
+            opts    - enable diffrent model options, modules, and functions
+            physical    - set physical parameters
+            io    - input and output variables i.e. paths to input files or outputfiles
+            restart    - suite of options and variables related to tRIBS restart feature
+            parallel    - suite of options and variables related to tRIBS parallelization
+            deprecated    - deprecated or untested options
+
         Example:
             >>> from tribsmodel import Model
             >>> m = Model()
@@ -420,36 +528,48 @@ class Model(object):
             {'startdate': 'STARTDATE:', 'runtime': 'RUNTIME:', 'rainsearch': 'RAINSEARCH:',...
         """
         self.options = {
-            "startdate": {"key_word": "STARTDATE:", "describe": "Starting time (MM/DD/YYYY/HH/MM)", "value": None},
-            "runtime": {"key_word": "RUNTIME:", "describe": "simulation length in hours", "value": None},
-            "rainsearch": {"key_word": "RAINSEARCH:", "describe": "Rainfall search interval (hours)", "value": 24},
+            "startdate": {"key_word": "STARTDATE:", "describe": "Starting time (MM/DD/YYYY/HH/MM)", "value": None,
+                          "tags": ["time"]},
+            "runtime": {"key_word": "RUNTIME:", "describe": "simulation length in hours", "value": None,
+                        "tags": ["time"]},
+            "rainsearch": {"key_word": "RAINSEARCH:", "describe": "Rainfall search interval (hours)", "value": 24,
+                           "tags": ["time"]},
             "timestep": {"key_word": "TIMESTEP:", "describe": "Unsaturated zone computational time step (mins)",
-                         "value": 3.75},
+                         "value": 3.75, "tags": ["time"]},
             "gwstep": {"key_word": "GWSTEP:", "describe": "Saturated zone computational time step (mins)",
-                       "value": 30.0},
-            "metstep": {"key_word": "METSTEP:", "describe": "Meteorological data time step (mins)", "value": 60.0},
-            "etistep": {"key_word": "ETISTEP:", "describe": "ET, interception and snow time step (hours)", "value": 1},
+                       "value": 30.0, "tags": ["time"]},
+            "metstep": {"key_word": "METSTEP:", "describe": "Meteorological data time step (mins)", "value": 60.0,
+                        "tags": ["time"]},
+            "etistep": {"key_word": "ETISTEP:", "describe": "ET, interception and snow time step (hours)", "value": 1,
+                        "tags": ["time"]},
             "rainintrvl": {"key_word": "RAININTRVL:", "describe": "Time interval in rainfall input (hours)",
-                           "value": 1},
-            "opintrvl": {"key_word": "OPINTRVL:", "describe": "Output interval (hours)", "value": 1},
-            "spopintrvl": {"key_word": "SPOPINTRVL:", "describe": "Spatial output interval (hours)", "value": 50000},
-            "intstormmax": {"key_word": "INTSTORMMAX:", "describe": "Interstorm interval (hours)", "value": 10000},
-            "baseflow": {"key_word": "BASEFLOW:", "describe": "Baseflow discharge (m3/s)", "value": 0.2},
-            "velocitycoef": {"key_word": "VELOCITYCOEF:", "describe": "Discharge-velocity coefficient", "value": 1.2},
+                           "value": 1, "tags": ["time"]},
+            "opintrvl": {"key_word": "OPINTRVL:", "describe": "Output interval (hours)", "value": 1, "tags": ["time"]},
+            "spopintrvl": {"key_word": "SPOPINTRVL:", "describe": "Spatial output interval (hours)", "value": 50000,
+                           "tags": ["time"]},
+            "intstormmax": {"key_word": "INTSTORMMAX:", "describe": "Interstorm interval (hours)", "value": 10000,
+                            "tags": ["time"]},
+            "baseflow": {"key_word": "BASEFLOW:", "describe": "Baseflow discharge (m3/s)", "value": 0.2,
+                         "tags": ["physical"]},
+            "velocitycoef": {"key_word": "VELOCITYCOEF:", "describe": "Discharge-velocity coefficient", "value": 1.2,
+                             "tags": ["physical"]},
             "kinemvelcoef": {"key_word": "KINEMVELCOEF:", "describe": "Kinematic routing velocity coefficient",
-                             "value": 3},
+                             "value": 3, "tags": ["physical"]},
             "velocityratio": {"key_word": "VELOCITYRATIO:", "describe": "Stream to hillslope velocity coefficient",
-                              "value": 60},
-            "flowexp": {"key_word": "FLOWEXP:", "describe": "Nonlinear discharge coefficient", "value": 0.3},
+                              "value": 60, "tags": ["physical"]},
+            "flowexp": {"key_word": "FLOWEXP:", "describe": "Nonlinear discharge coefficient", "value": 0.3,
+                        "tags": ["physical"]},
             "channelroughness": {"key_word": "CHANNELROUGHNESS:", "describe": "Uniform channel roughness value",
-                                 "value": 0.15},
-            "channelwidth": {"key_word": "CHANNELWIDTH:", "describe": "Uniform channel width  (meters)", "value": 12},
+                                 "value": 0.15, "tags": ["physical"]},
+            "channelwidth": {"key_word": "CHANNELWIDTH:", "describe": "Uniform channel width  (meters)", "value": 12,
+                             "tags": ["physical"]},
             "channelwidthcoeff": {"key_word": "CHANNELWIDTHCOEFF:",
-                                  "describe": "Coefficient in width-area relationship", "value": 2.33},
+                                  "describe": "Coefficient in width-area relationship", "value": 2.33,
+                                  "tags": ["physical"]},
             "channelwidthexpnt": {"key_word": "CHANNELWIDTHEXPNT:", "describe": "Exponent in width-area relationship",
-                                  "value": 0.54},
+                                  "value": 0.54, "tags": ["physical"]},
             "channelwidthfile": {"key_word": "CHANNELWIDTHFILE:", "describe": "Filename that contains channel widths",
-                                 "value": None},
+                                 "value": None, "tags": ["io"]},
             "optmeshinput": {"key_word": "OPTMESHINPUT:", "describe": "Mesh input data option\n" + \
                                                                       "1  tMesh data\n" + \
                                                                       "2  Point file\n" + \
@@ -458,37 +578,42 @@ class Model(object):
                                                                       "5  Arc/Info *.net\n" + \
                                                                       "6  Arc/Info *.lin,*.pnt\n" + \
                                                                       "7  Scratch\n" + \
-                                                                      "8  Point Triangulator", "value": 8},
+                                                                      "8  Point Triangulator", "value": 8,
+                             "tags": ["opts"]},
             "rainsource": {"key_word": "RAINSOURCE:", "describe": "Rainfall data source option\n" +
                                                                   "1  Stage III radar\n" +
                                                                   "2  WSI radar\n" +
-                                                                  "3  Rain gauges", "value": 3},
+                                                                  "3  Rain gauges", "value": 3, "tags": ["opts"]},
             "optevapotrans": {"key_word": "OPTEVAPOTRANS:", "describe": "Option for evapoTranspiration scheme\n" + \
                                                                         "0  Inactive evapotranspiration\n" + \
                                                                         "1  Penman-Monteith method\n" + \
                                                                         "2  Deardorff method\n" + \
                                                                         "3  Priestley-Taylor method\n" + \
-                                                                        "4  Pan evaporation measurements", "value": 1},
+                                                                        "4  Pan evaporation measurements", "value": 1,
+                              "tags": ["opts"]},
             "hillalbopt": {"key_word": "HILLALBOPT:", "describe": "Option for albedo of surrounding hillslopes\n" + \
                                                                   "0  Snow albedo for hillslopes\n" + \
                                                                   "1  Land-cover albedo for hillslopes\n" + \
-                                                                  "2  Dynamic albedo for hillslopes", "value": 0},
+                                                                  "2  Dynamic albedo for hillslopes", "value": 0,
+                           "tags": ["opts"]},
             "optradshelt": {"key_word": "OPTRADSHELT:", "describe": "Option for local and remote radiation sheltering" +
                                                                     "0  Local controls on shortwave radiation\n" + \
                                                                     "1  Remote controls on diffuse shortwave\n" + \
                                                                     "2  Remote controls on entire shortwave\n" + \
-                                                                    "3  No sheltering", "value": 0},
+                                                                    "3  No sheltering", "value": 0, "tags": ["opts"]},
             "optintercept": {"key_word": "OPTINTERCEPT:", "describe": "Option for interception scheme\n" + \
                                                                       "0  Inactive interception\n" + \
                                                                       "1  Canopy storage method\n" + \
-                                                                      "2  Canopy water balance method", "value": 2},
+                                                                      "2  Canopy water balance method", "value": 2,
+                             "tags": ["opts"]},
             "optlanduse": {"key_word": "OPTLANDUSE:", "describe": "Option for static or dynamic land cover\n" + \
                                                                   "0  Static land cover maps\n" + \
-                                                                  "1  Dynamic updating of land cover maps", "value": 0},
+                                                                  "1  Dynamic updating of land cover maps", "value": 0,
+                           "tags": ["opts"]},
             "optluinterp": {"key_word": "OPTLUINTERP:", "describe": "Option for interpolation of land cover\n" + \
                                                                     "0  Constant (previous) values between land cover\n" + \
                                                                     "1  Linear interpolation between land cover",
-                            "value": 1},
+                            "value": 1, "tags": ["opts"]},
             "gfluxoption": {"key_word": "GFLUXOPTION:", "describe": "Option for ground heat flux\n" + \
                                                                     "0  Inactive ground heat flux\n" + \
                                                                     "1  Temperature gradient method\n" + \
@@ -496,142 +621,184 @@ class Model(object):
             "metdataoption": {"key_word": "METDATAOPTION:", "describe": "Option for meteorological data\n" + \
                                                                         "0  Inactive meteorological data\n" + \
                                                                         "1  Weather station point data\n" +
-                                                                        "2  Gridded meteorological data", "value": 1},
-            "convertdata": {"key_word": "CONVERTDATA:", "describe": "Option to convert met data format", "value": 0},
+                                                                        "2  Gridded meteorological data", "value": 1,
+                              "tags": ["opts"]},
+            "convertdata": {"key_word": "CONVERTDATA:", "describe": "Option to convert met data format", "value": 0,
+                            "tags": ["opts"]},
             # TODO update options in describe
-            "optbedrock": {"key_word": "OPTBEDROCK:", "describe": "Option for uniform or variable depth", "value": 0},
+            "optbedrock": {"key_word": "OPTBEDROCK:", "describe": "Option for uniform or variable depth", "value": 0,
+                           "tags": ["opts"]},
             "widthinterpolation": {"key_word": "WIDTHINTERPOLATION:",
-                                   "describe": "Option for interpolating width values", "value": 0},
+                                   "describe": "Option for interpolating width values", "value": 0, "tags": ["opts"]},
             "optgwfile": {"key_word": "OPTGWFILE:", "describe": "Option for groundwater initial file\n" + \
                                                                 "0 Resample ASCII grid file in GWATERFILE\n" + \
                                                                 "1 Read in Voronoi polygon file with GW levels",
-                          "value": 0},
-            "optrunon": {"key_word": "OPTRUNON:", "describe": "Option for runon in overland flow paths", "value": 0},
-            "optreservoir": {"key_word": "OPTRESERVOIR:", "describe": None, "value": 0},  # TODO update describe
-            "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": None, "value": 0},  # TODO update describe
-            "optspatial": {"key_word": "OPTSPATIAL:", "describe": "Enable dynamic spatial output", "value": 0},
-            "optgroundwater": {"key_word": "OPTGROUNDWATER:", "describe": "Enable groundwater module", "value": 1},
+                          "value": 0, "tags": ["opts"]},
+            "optrunon": {"key_word": "OPTRUNON:", "describe": "Option for runon in overland flow paths", "value": 0,
+                         "tags": ["opts"]},
+            "optreservoir": {"key_word": "OPTRESERVOIR:", "describe": None, "value": 0, "tags": ["opts"]},
+            # TODO update describe
+            "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": None, "value": 0, "tags": ["opts"]},
+            # TODO update describe
+            "optspatial": {"key_word": "OPTSPATIAL:", "describe": "Enable dynamic spatial output", "value": 0,
+                           "tags": ["opts"]},
+            "optgroundwater": {"key_word": "OPTGROUNDWATER:", "describe": "Enable groundwater module", "value": 1,
+                               "tags": ["opts"]},
             "optinterhydro": {"key_word": "OPTINTERHYDRO:", "describe": "Enable intermediate hydrograph output",
-                              "value": 0},
-            "optheader": {"key_word": "OPTHEADER:", "describe": "Enable headers in output files", "value": 1},
-            "optsnow": {"key_word": "OPTSNOW:", "describe": "Enable single layer snow module", "value": 1},
+                              "value": 0, "tags": ["opts"]},
+            "optheader": {"key_word": "OPTHEADER:", "describe": "Enable headers in output files", "value": 1,
+                          "tags": ["opts"]},
+            "optsnow": {"key_word": "OPTSNOW:", "describe": "Enable single layer snow module", "value": 1,
+                        "tags": ["opts"]},
             "inputdatafile": {"key_word": "INPUTDATAFILE:", "describe": "tMesh input file base name for Mesh files",
-                              "value": None},
-            "inputtime": {"key_word": "INPUTTIME:", "describe": "depricated", "value": None},
+                              "value": None, "tags": ["io"]},
+            "inputtime": {"key_word": "INPUTTIME:", "describe": "deprecated", "value": None, "tags": ["deprecated"]},
             # TODO remove option, child remnant?
             "arcinfofilename": {"key_word": "ARCINFOFILENAME:", "describe": "tMesh input file base name Arc files",
-                                "value": None},
+                                "value": None, "tags": ["io"]},
             "pointfilename": {"key_word": "POINTFILENAME:", "describe": "tMesh input file name Points files",
-                              "value": None},
+                              "value": None, "tags": ["io"]},
             "soiltablename": {"key_word": "SOILTABLENAME:", "describe": "Soil parameter reference table (*.sdt)",
-                              "value": None},
-            "soilmapname": {"key_word": "SOILMAPNAME:", "describe": "Soil texture ASCII grid (*.soi)", "value": None},
+                              "value": None, "tags": ["io"]},
+            "soilmapname": {"key_word": "SOILMAPNAME:", "describe": "Soil texture ASCII grid (*.soi)", "value": None,
+                            "tags": ["io"]},
             "landtablename": {"key_word": "LANDTABLENAME:", "describe": "Land use parameter reference table",
-                              "value": None},
-            "landmapname": {"key_word": "LANDMAPNAME:", "describe": "Land use ASCII grid (*.lan)", "value": None},
-            "gwaterfile": {"key_word": "GWATERFILE:", "describe": "Ground water ASCII grid (*iwt)", "value": None},
+                              "value": None, "tags": ["io"]},
+            "landmapname": {"key_word": "LANDMAPNAME:", "describe": "Land use ASCII grid (*.lan)", "value": None,
+                            "tags": ["io"]},
+            "gwaterfile": {"key_word": "GWATERFILE:", "describe": "Ground water ASCII grid (*iwt)", "value": None,
+                           "tags": ["io"]},
             "demfile": {"key_word": "DEMFILE:", "describe": "DEM ASCII grid for sky and land view factors (*.dem)",
-                        "value": None},
-            "rainfile": {"key_word": "RAINFILE:", "describe": "Base name of the radar ASCII grid", "value": None},
+                        "value": None, "tags": ["io"]},
+            "rainfile": {"key_word": "RAINFILE:", "describe": "Base name of the radar ASCII grid", "value": None,
+                         "tags": ["io"]},
             "rainextension": {"key_word": "RAINEXTENSION:", "describe": "Extension for the radar ASCII grid",
-                              "value": None},
+                              "value": None, "tags": ["io"]},
             "depthtobedrock": {"key_word": "DEPTHTOBEDROCK:", "describe": "Uniform depth to bedrock (meters)",
-                               "value": 15},
-            "bedrockfile": {"key_word": "BEDROCKFILE:", "describe": "Bedrock depth ASCII grid (*.brd)", "value": None},
-            "lugrid": {"key_word": "LUGRID:", "describe": "Land cover grid data file (*.gdf)", "value": None},
-            "tlinke": {"key_word": "TLINKE:", "describe": "Atmospheric turbidity parameter", "value": 2.5},
-            "minsntemp": {"key_word": "MINSNTEMP:", "describe": "Minimum snow temperature", "value": -50.0},
+                               "value": 15, "tags": ["physical"]},
+            "bedrockfile": {"key_word": "BEDROCKFILE:", "describe": "Bedrock depth ASCII grid (*.brd)", "value": None,
+                            "tags": ["io"]},
+            "lugrid": {"key_word": "LUGRID:", "describe": "Land cover grid data file (*.gdf)", "value": None,
+                       "tags": ["io"]},
+            "tlinke": {"key_word": "TLINKE:", "describe": "Atmospheric turbidity parameter", "value": 2.5,
+                       "tags": ["physical"]},
+            "minsntemp": {"key_word": "MINSNTEMP:", "describe": "Minimum snow temperature", "value": -50.0,
+                          "tags": ["physical"]},
             "snliqfrac": {"key_word": "SNLIQFRAC:", "describe": "Maximum fraction of liquid water in snowpack",
-                          "value": 0.065},
-            "templapse": {"key_word": "TEMPLAPSE:", "describe": "Temperature lapse rate", "value": -0.0065},
-            "preclapse": {"key_word": "PRECLAPSE:", "describe": "Precipitation lapse rate", "value": 0},
+                          "value": 0.065, "tags": ["physical"]},
+            "templapse": {"key_word": "TEMPLAPSE:", "describe": "Temperature lapse rate", "value": -0.0065,
+                          "tags": ["physical"]},
+            "preclapse": {"key_word": "PRECLAPSE:", "describe": "Precipitation lapse rate", "value": 0,
+                          "tags": ["physical"]},
             "hydrometstations": {"key_word": "HYDROMETSTATIONS:",
-                                 "describe": "Hydrometeorological station file (*.sdf)", "value": None},
+                                 "describe": "Hydrometeorological station file (*.sdf)", "value": None, "tags": ["io"]},
             "hydrometgrid": {"key_word": "HYDROMETGRID:", "describe": "Hydrometeorological grid data file (*.gdf)",
-                             "value": None},
+                             "value": None, "tags": ["io"]},
             "hydrometconvert": {"key_word": "HYDROMETCONVERT:",
-                                "describe": "Hydrometeorological data conversion file (*.mdi)", "value": None},
+                                "describe": "Hydrometeorological data conversion file (*.mdi)", "value": None,
+                                "tags": ["io", "deprecated"]},
             "hydrometbasename": {"key_word": "HYDROMETBASENAME:",
-                                 "describe": "Hydrometeorological data BASE name (*.mdf)", "value": None},
+                                 "describe": "Hydrometeorological data BASE name (*.mdf)", "value": None,
+                                 "tags": ["io"]},
             "gaugestations": {"key_word": "GAUGESTATIONS:", "describe": " Rain Gauge station file (*.sdf)",
-                              "value": None},
+                              "value": None, "tags": ["io"]},
             "gaugeconvert": {"key_word": "GAUGECONVERT:", "describe": "Rain Gauge data conversion file (*.mdi)",
-                             "value": None},
+                             "value": None, "tags": ["io", "deprecated"]},
             "gaugebasename": {"key_word": "GAUGEBASENAME:", "describe": " Rain Gauge data BASE name (*.mdf)",
-                              "value": None},
+                              "value": None, "tags": ["io"]},
             "outhydroextension": {"key_word": "OUTHYDROEXTENSION:", "describe": "Extension for hydrograph output",
-                                  "value": "mrf"},
+                                  "value": "mrf", "tags": ["io"]},
             "ribshydoutput": {"key_word": "RIBSHYDOUTPUT:", "describe": "compatibility with RIBS User Interphase",
-                              "value": 0},
+                              "value": 0, "tags": ["io", "deprecated"]},
             "nodeoutputlist": {"key_word": "NODEOUTPUTLIST:",
-                               "describe": "Filename with Nodes for Dynamic Output (*.nol)", "value": None},
+                               "describe": "Filename with Nodes for Dynamic Output (*.nol)", "value": None,
+                               "tags": ["io"]},
             "hydronodelist": {"key_word": "HYDRONODELIST:",
-                              "describe": "Filename with Nodes for HydroModel Output (*.nol)", "value": None},
+                              "describe": "Filename with Nodes for HydroModel Output (*.nol)", "value": None,
+                              "tags": ["io"]},
             "outletnodelist": {"key_word": "OUTLETNODELIST:",
-                               "describe": "Filename with Interior Nodes for  Output (*.nol)", "value": None},
+                               "describe": "Filename with Interior Nodes for  Output (*.nol)", "value": None,
+                               "tags": ["io"]},
             "outfilename": {"key_word": "OUTFILENAME:", "describe": "Base name of the tMesh and variable",
-                            "value": None},
+                            "value": None, "tags": ["io"]},
             "outhydrofilename": {"key_word": "OUTHYDROFILENAME:", "describe": "Base name for hydrograph output",
-                                 "value": None},
-            "forecastmode": {"key_word": "FORECASTMODE:", "describe": "Rainfall Forecasting Mode Option", "value": 0},
+                                 "value": None, "tags": ["io"]},
+            "forecastmode": {"key_word": "FORECASTMODE:", "describe": "Rainfall Forecasting Mode Option", "value": 0,
+                             "tags": ["opts"]},
             # TODO need to update model mode descriptions
-            "forecasttime": {"key_word": "FORECASTTIME:", "describe": "Forecast Time (hours from start)", "value": 0},
+            "forecasttime": {"key_word": "FORECASTTIME:", "describe": "Forecast Time (hours from start)", "value": 0,
+                             "tags": ["time"]},
             "forecastleadtime": {"key_word": "FORECASTLEADTIME:", "describe": "Forecast Lead Time (hours) ",
-                                 "value": 0},
-            "forecastlength": {"key_word": "FORECASTLENGTH:", "describe": "Forecast Window Length (hours)", "value": 0},
+                                 "value": 0, "tags": ["time"]},
+            "forecastlength": {"key_word": "FORECASTLENGTH:", "describe": "Forecast Window Length (hours)", "value": 0,
+                               "tags": ["time"]},
             "forecastfile": {"key_word": "FORECASTFILE:", "describe": "Base name of the radar QPF grids",
-                             "value": None},
-            "climatology": {"key_word": "CLIMATOLOGY:", "describe": "Rainfall climatology (mm/hr)", "value": 0},
+                             "value": None, "tags": ["io"]},
+            "climatology": {"key_word": "CLIMATOLOGY:", "describe": "Rainfall climatology (mm/hr)", "value": 0,
+                            "tags": ["physical"]},
             "raindistribution": {"key_word": "RAINDISTRIBUTION:", "describe": "Distributed or MAP radar rainfall",
-                                 "value": 0},
-            "stochasticmode": {"key_word": "STOCHASTICMODE:", "describe": "Stochastic Climate Mode Option", "value": 0},
-            "pmean": {"key_word": "PMEAN:", "describe": "Mean rainfall intensity (mm/hr)	", "value": 0},
-            "stdur": {"key_word": "STDUR:", "describe": "Mean storm duration (hours)", "value": 0},
-            "istdur": {"key_word": "ISTDUR:", "describe": "Mean time interval between storms (hours)", "value": 0},
-            "seed": {"key_word": "SEED:", "describe": "Random seed", "value": 0},
-            "period": {"key_word": "PERIOD:", "describe": "Period of variation (hours)", "value": 0},
+                                 "value": 0, "tags": ["opts"]},
+            "stochasticmode": {"key_word": "STOCHASTICMODE:", "describe": "Stochastic Climate Mode Option", "value": 0,
+                               "tags": ["opts"]},
+            "pmean": {"key_word": "PMEAN:", "describe": "Mean rainfall intensity (mm/hr)	", "value": 0,
+                      "tags": ["physical"]},
+            "stdur": {"key_word": "STDUR:", "describe": "Mean storm duration (hours)", "value": 0,
+                      "tags": ["physical"]},
+            "istdur": {"key_word": "ISTDUR:", "describe": "Mean time interval between storms (hours)", "value": 0,
+                       "tags": ["physical"]},
+            "seed": {"key_word": "SEED:", "describe": "Random seed", "value": 0, "tags": ["physical"]},
+            "period": {"key_word": "PERIOD:", "describe": "Period of variation (hours)", "value": 0,
+                       "tags": ["physical"]},
             "maxpmean": {"key_word": "MAXPMEAN:", "describe": "Maximum value of mean rainfall intensity (mm/hr)",
-                         "value": 0},
+                         "value": 0, "tags": ["physical"]},
             "maxstdurmn": {"key_word": "MAXSTDURMN:", "describe": "Maximum value of mean storm duration (hours)",
-                           "value": 0},
+                           "value": 0, "tags": ["physical"]},
             "maxistdurmn": {"key_word": "MAXISTDURMN:", "describe": "Maximum value of mean interstorm period (hours)",
-                            "value": 0},
+                            "value": 0, "tags": ["physical"]},
             "weathertablename": {"key_word": "WEATHERTABLENAME:", "describe": "File with Stochastic Weather Table",
-                                 "value": None},
+                                 "value": None, "tags": ["io"]},
             "restartmode": {"key_word": "RESTARTMODE:", "describe": "Restart Mode Option\n" + \
                                                                     "0 No reading or writing of restart\n" + \
                                                                     "1 Write files (only for initial runs)\n" + \
                                                                     "2 Read file only (to start at some specified time)\n" + \
                                                                     " Read a restart file and continue to write",
-                            "value": 0},
+                            "value": 0, "tags": ["restart"]},
             "restartintrvl": {"key_word": "RESTARTINTRVL:", "describe": "Time set for restart output (hours)",
-                              "value": None},
+                              "value": None, "tags": ["restart"]},
             "restartdir": {"key_word": "RESTARTDIR:", "describe": "Path of directory for restart output",
-                           "value": None},
-            "restartfile": {"key_word": "RESTARTFILE:", "describe": "Actual file to restart a run", "value": None},
+                           "value": None, "tags": ["restart", "io"]},
+            "restartfile": {"key_word": "RESTARTFILE:", "describe": "Actual file to restart a run", "value": None,
+                            "tags": ["restart", "io"]},
             "parallelmode": {"key_word": "PARALLELMODE:", "describe": "Parallel or Serial Mode Option\n" + \
                                                                       "0  Run in serial mode\n" + \
                                                                       "1  Run in parallel mode",
-                             "value": 0},
+                             "value": 0, "tags": ["parallel", "opts"]},
             "graphoption": {"key_word": "GRAPHOPTION:", "describe": "Graph File Type Option\n" + \
                                                                     "0  Default partitioning of the graph\n" + \
                                                                     "1  Reach-based partitioning\n" + \
-                                                                    "2  Inlet/outlet-based partitioning", "value": 0},
+                                                                    "2  Inlet/outlet-based partitioning", "value": 0,
+                            "tags": ["parallel", "opts"]},
             "graphfile": {"key_word": "GRAPHFILE:", "describe": "Reach connectivity filename (graph file option 1,2)",
-                          "value": None},
+                          "value": None, "tags": ["parallel", "io"]},
             "optviz": {"key_word": "OPTVIZ:", "describe": "Option to write binary output files for visualization\n" + \
                                                           "0  Do NOT write binary output files for viz\n" + \
-                                                          "1  Write binary output files for viz", "value": 0},
+                                                          "1  Write binary output files for viz", "value": 0,
+                       "tags": ["opts"]},
             "outvizfilename": {"key_word": "OUTVIZFILENAME:", "describe": "Filename for viz binary files",
-                               "value": None},
-            "optpercolation": {"key_word": "OPTPERCOLATION:", "describe": "Needs to be updated", "value": 0},
-            "channelconductivity": {"key_word": "CHANNELCONDUCTIVITY:", "describe": "Needs to be updated", "value": 0},
+                               "value": None, "tags": ["io"]},
+            "optpercolation": {"key_word": "OPTPERCOLATION:", "describe": "Needs to be updated", "value": 0,
+                               "tags": ["physical"]},
+            "channelconductivity": {"key_word": "CHANNELCONDUCTIVITY:", "describe": "Needs to be updated", "value": 0,
+                                    "tags": ["physical"]},
             "transientconductivity": {"key_word": "TRANSIENTCONDUCTIVITY:", "describe": "Needs to be updated",
-                                      "value": 0},
-            "transienttime": {"key_word": "TRANSIENTTIME:", "describe": "Needs to be updated", "value": 0},
-            "channelporosity": {"key_word": "CHANNELPOROSITY:", "describe": "Needs to be updated", "value": 0},
-            "chanporeindex": {"key_word": "CHANPOREINDEX:", "describe": "Needs to be updated", "value": 0},
-            "chanpsib": {"key_word": "CHANPSIB:", "describe": "Needs to be updated", "value": 0}
+                                      "value": 0, "tags": ["physical"]},
+            "transienttime": {"key_word": "TRANSIENTTIME:", "describe": "Needs to be updated", "value": 0,
+                              "tags": ["physical"]},
+            "channelporosity": {"key_word": "CHANNELPOROSITY:", "describe": "Needs to be updated", "value": 0,
+                                "tags": ["physical"]},
+            "chanporeindex": {"key_word": "CHANPOREINDEX:", "describe": "Needs to be updated", "value": 0,
+                              "tags": ["physical"]},
+            "chanpsib": {"key_word": "CHANPSIB:", "describe": "Needs to be updated", "value": 0, "tags": ["physical"]}
         }
 
 
@@ -663,7 +830,7 @@ class Results(Model):
 
         """
         if mrf_file is None:
-            mrf_file = self.options["outfilename"]["value"] + self.options["runtime"]["value"] + "_00.mrf"
+            mrf_file = self.options["outfilename"]["value"] + str(self.options["runtime"]["value"]) + "_00.mrf"
 
         # Read the first two rows to get column names and units
         with open(mrf_file, 'r') as file:

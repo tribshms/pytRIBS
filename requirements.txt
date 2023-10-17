@@ -2,3 +2,5 @@ numpy
 argparse
 pandas
 matplotlib
+geopandas
+shapely
