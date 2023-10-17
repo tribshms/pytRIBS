@@ -21,7 +21,10 @@ import matplotlib.dates as mdates
 # geopandas for voronoi and rasterios for rasters, gdal for raster-shapefile conversions
 # ideas on plotting up shapefiles--create overview with partioned reach, create plot of individual partions showing
 # voronoi as shapes/
-# could you plot tRIB reaches?
+# in pre-check:
+#   (1) call check if graph flag 2 or 3 is called the graph file contains the resepective reach or nodes? words in file name
+#   (2) check that files actually exist...
+
 
 class Model(object):
     """
@@ -86,9 +89,15 @@ class Model(object):
             self):  # TODO make it so you can run meshbuilder, and same functionality as pearl scripts, and ksh scripts but using python
         pass
 
+    def precheck(self):
+        """
+        """
+        pass
+
+
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
-            store_input=None, timeit = True):
+            store_input=None, timeit=True):
         """
         Run a tRIBS model simulation with optional arguments.
 
@@ -119,7 +128,7 @@ class Model(object):
             command.append(log_path)
 
         if timeit:
-            command.insert(0,"time")
+            command.insert(0, "time")
 
         print(command)
 
@@ -203,7 +212,60 @@ class Model(object):
         pass
 
     def check_paths(self):
-        pass
+        data = self.options  # Assuming m.options is a dictionary with sub-dictionaries
+        exists = []
+        doesnt = []
+
+        # Filter sub-dictionaries where "io" is in the "tags" list
+        result = [item for item in data.values() if any('io' in tag for tag in item.get("tags", []))]
+
+        # Display the filtered sub-dictionaries
+        for item in result:
+            if item["value"] is not None:
+                flag = os.path.exists(item["value"])
+                if flag:
+                    exists.append(item)
+                else:
+                    doesnt.append(item)
+
+        print("\nThe following tRIBS inputs do not have paths that exist: \n")
+        for item in doesnt:
+            print(item["key_word"]+" "+item["describe"])
+
+        print("...\n...\n...\n")
+
+        print("Checking if station descriptor paths exist.\n")
+        rain = self.read_precip_sdf()
+        print("...\n...\n...\n")
+
+        flags = []
+        if rain is not None:
+            for station in rain:
+                flag = os.path.exists(station["file_path"])
+                if not flag:
+                    print({station["file_path"]} + " does not exist")
+                    flags.append(flag)
+            if all(flags):
+                print("All rain gauge paths exist.")
+        else:
+            print("No rain gauges are specified.")
+
+        met = self.read_met_sdf()
+        print("...\n...\n...\n")
+
+        flags = []
+        if met is not None:
+            for station in met:
+                flag = os.path.exists(station["file_path"])
+                if not flag:
+                    print({station["file_path"]} + " does not exist")
+
+                if all(flags):
+                    print("All met station paths exist.")
+        else:
+            print("No met stations are specified.")
+
+
 
     # I/O METHODS
     @staticmethod
@@ -308,6 +370,10 @@ class Model(object):
         if file_path is None:
             file_path = self.options["gaugestations"]["value"]
 
+            if file_path is None:
+                #print(self.options["gaugestations"]["key_word"] + "is not specified.")
+                return None
+
         station_list = []
 
         with open(file_path, 'r') as file:
@@ -324,13 +390,13 @@ class Model(object):
         if len(station_info) == 7:
             station_id, file_path, lat, long, record_length, num_params, elevation = station_info
             station = {
-                "StationID": station_id,
-                "FilePath": file_path,
-                "Y": float(lat),
-                "X": float(long),
-                "RecordLength": int(record_length),
-                "NumParameters": int(num_params),
-                "Elevation": float(elevation)
+                "station_id": station_id,
+                "file_path": file_path,
+                "y": float(lat),
+                "x": float(long),
+                "record_length": int(record_length),
+                "num_parameters": int(num_params),
+                "elevation": float(elevation)
             }
             station_list.append(station)
 
@@ -380,6 +446,10 @@ class Model(object):
         if file_path is None:
             file_path = self.options["hydrometstations"]["value"]
 
+            if file_path is None:
+                #print(self.options["hydrometstations"]["key_word"] + "is not specified.")
+                return None
+
         station_list = []
 
         with open(file_path, 'r') as file:
@@ -396,16 +466,16 @@ class Model(object):
         if len(station_info) == 10:
             station_id, file_path, lat, y, long, x, gmt, record_length, num_params, other = station_info
             station = {
-                "StationID": station_id,
-                "FilePath": file_path,
-                "Lat(dd)": float(lat),
-                "X": float(x),
-                "Long(dd)": float(long),
-                "Y": float(y),
+                "station_id": station_id,
+                "file_path": file_path,
+                "lat_dd": float(lat),
+                "x": float(x),
+                "long_dd": float(long),
+                "y": float(y),
                 "GMT": int(gmt),
-                "RecordLength": int(record_length),
-                "Num_Parameters": int(num_params),
-                "Other": other
+                "record_length": int(record_length),
+                "num_parameters": int(num_params),
+                "other": other
             }
             station_list.append(station)
 
@@ -448,7 +518,7 @@ class Model(object):
             if line == "END":
                 if current_id is not None:
                     line_string = LineString(coordinates)
-                    features.append({"id": current_id, "geometry": line_string})
+                    features.append({"ID": current_id, "geometry": line_string})
                     current_id = None
                     coordinates = []
             else:
@@ -472,40 +542,45 @@ class Model(object):
 
         ids = []
         polygons = []
+        if os.path.exists(filename):
+            with open(filename, 'r') as file:
+                current_id = None
+                current_points = []
 
-        with open(filename, 'r') as file:
-            current_id = None
-            current_points = []
+                for line in file:
+                    line = line.strip()
+                    if line == "END":
+                        if current_id is not None:
+                            ids.append(current_id)
+                            if len(current_points) >= 3:
+                                polygons.append(Polygon(current_points))
+                            current_id = None
+                            current_points = []
+                    else:
+                        parts = line.split(',')
+                        if len(parts) == 3:
+                            id_, x, y = map(float, parts)
+                            current_id = id_
+                            current_points.append((x, y))
+                        elif len(parts) == 2:
+                            x, y = map(float, parts)
+                            current_points.append((x, y))
 
-            for line in file:
-                line = line.strip()
-                if line == "END":
-                    if current_id is not None:
-                        ids.append(current_id)
-                        if len(current_points) >= 3:
-                            polygons.append(Polygon(current_points))
-                        current_id = None
-                        current_points = []
-                else:
-                    parts = line.split(',')
-                    if len(parts) == 3:
-                        id_, x, y = map(float, parts)
-                        current_id = id_
-                        current_points.append((x, y))
+            if not ids or not polygons:
+                raise ValueError("No valid data found in " + filename)
 
+            features = {'ID': ids, 'geometry': polygons}
 
-        if not ids or not polygons:
-            raise ValueError("No valid data found in "+filename)
+            if self.geo["EPSG"] is not None:
+                gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+            else:
+                gdf = gpd.GeoDataFrame(features)
+                print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
 
-        features = {'ID': ids, 'geometry': polygons}
-
-        if self.geo["EPSG"] is not None:
-            gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+            return gdf
         else:
-            gdf = gpd.GeoDataFrame(features)
-            print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
-
-        return gdf
+            print("Voi file not found.")
+            return None
 
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
     def print_tags(self, tag_name):
