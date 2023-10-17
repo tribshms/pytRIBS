@@ -2,6 +2,7 @@
 
 import numpy as np
 import geopandas as gpd
+import shutil
 import pyproj
 from shapely.geometry import LineString
 from shapely.geometry import Point
@@ -144,6 +145,20 @@ class Model(object):
             int: The return code of the binary model simulation.
         """
         # TODO: add check if build directory already exists, prompt user if they want to remove
+        if os.path.exists(build_directory):
+            print(f"The directory '{build_directory}' exists.")
+            user_input = input("Would you like to remove it? [y/n]: ")
+            if user_input:
+                try:
+                    # Remove the directory and its contents
+                    shutil.rmtree(build_directory)
+                    print(f"Directory '{build_directory}' and its contents have been removed.")
+                except FileNotFoundError:
+                    print(f"Directory '{build_directory}' does not exist.")
+                except PermissionError:
+                    print(f"Permission denied while attempting to remove '{build_directory}'.")
+                except Exception as e:
+                    print(f"An error occurred: {str(e)}")
 
         # Allow modification of CMakeList.txt
         modified_lines = []
