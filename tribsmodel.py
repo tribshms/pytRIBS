@@ -94,7 +94,6 @@ class Model(object):
         """
         pass
 
-
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
             store_input=None, timeit=True):
@@ -230,42 +229,46 @@ class Model(object):
 
         print("\nThe following tRIBS inputs do not have paths that exist: \n")
         for item in doesnt:
-            print(item["key_word"]+" "+item["describe"])
+            print(item["key_word"] + " " + item["describe"])
 
-        print("...\n...\n...\n")
 
-        print("Checking if station descriptor paths exist.\n")
+        print("\nChecking if station descriptor paths exist.\n")
         rain = self.read_precip_sdf()
-        print("...\n...\n...\n")
+        print("...")
 
         flags = []
         if rain is not None:
             for station in rain:
                 flag = os.path.exists(station["file_path"])
+                flags.append(flag)
+
                 if not flag:
-                    print({station["file_path"]} + " does not exist")
-                    flags.append(flag)
+                    print(station["file_path"] + " does not exist")
+
             if all(flags):
                 print("All rain gauge paths exist.")
         else:
             print("No rain gauges are specified.")
 
         met = self.read_met_sdf()
-        print("...\n...\n...\n")
+        print("...")
 
         flags = []
         if met is not None:
             for station in met:
                 flag = os.path.exists(station["file_path"])
-                if not flag:
-                    print({station["file_path"]} + " does not exist")
+                flags.append(flag)
 
-                if all(flags):
-                    print("All met station paths exist.")
+                if not flag:
+                    print(station["file_path"] + " does not exist")
+
+            if all(flags):
+                print("All met station paths exist.")
+
         else:
             print("No met stations are specified.")
 
-
+        print("TODO check .gdf files")
 
     # I/O METHODS
     @staticmethod
@@ -362,16 +365,12 @@ class Model(object):
                     output_file.write(f"{keyword}\n")
                     output_file.write(f"{value}\n\n")
 
-    def add_descriptor_files(self):
-        self.descriptor_files.update({"precip": self.read_precip_sdf()})
-        self.descriptor_files.update({"met": self.read_met_sdf()})
-
     def read_precip_sdf(self, file_path=None):
         if file_path is None:
             file_path = self.options["gaugestations"]["value"]
 
             if file_path is None:
-                #print(self.options["gaugestations"]["key_word"] + "is not specified.")
+                print(self.options["gaugestations"]["key_word"] + "is not specified.")
                 return None
 
         station_list = []
@@ -379,30 +378,26 @@ class Model(object):
         with open(file_path, 'r') as file:
             lines = file.readlines()
 
-        if len(lines) != 2:
-            print("Error: Number of lines does not match the expected count (2).")
-            return None
+        metadata = lines.pop(0)
+        num_stations, num_parameters = map(int, metadata.strip().split())
 
-        num_stations, num_parameters = map(int, lines[0].strip().split())
+        for l in lines:
+            station_info = l.strip().split()
+            if len(station_info) == 7:
+                station_id, file_path, lat, long, record_length, num_params, elevation = station_info
+                station = {
+                    "station_id": station_id,
+                    "file_path": file_path,
+                    "y": float(lat),
+                    "x": float(long),
+                    "record_length": int(record_length),
+                    "num_parameters": int(num_params),
+                    "elevation": float(elevation)
+                }
+                station_list.append(station)
 
-        line = lines[1]
-        station_info = line.strip().split()
-        if len(station_info) == 7:
-            station_id, file_path, lat, long, record_length, num_params, elevation = station_info
-            station = {
-                "station_id": station_id,
-                "file_path": file_path,
-                "y": float(lat),
-                "x": float(long),
-                "record_length": int(record_length),
-                "num_parameters": int(num_params),
-                "elevation": float(elevation)
-            }
-            station_list.append(station)
-
-        elif len(station_list) != num_stations:
+        if len(station_list) != num_stations:
             print("Error: Number of stations does not match the specified count.")
-            return None
 
         return station_list
 
@@ -447,7 +442,7 @@ class Model(object):
             file_path = self.options["hydrometstations"]["value"]
 
             if file_path is None:
-                #print(self.options["hydrometstations"]["key_word"] + "is not specified.")
+                print(self.options["hydrometstations"]["key_word"] + "is not specified.")
                 return None
 
         station_list = []
@@ -455,33 +450,30 @@ class Model(object):
         with open(file_path, 'r') as file:
             lines = file.readlines()
 
-        if len(lines) != 2:
-            print("Error: Number of lines does not match the expected count (2).")
-            return None
+        metadata = lines.pop(0)
+        num_stations, num_parameters = map(int, metadata.strip().split())
 
-        num_stations, num_parameters = map(int, lines[0].strip().split())
-        line = lines[1]
-        station_info = line.strip().split()
+        for l in lines:
+            station_info = l.strip().split()
 
-        if len(station_info) == 10:
-            station_id, file_path, lat, y, long, x, gmt, record_length, num_params, other = station_info
-            station = {
-                "station_id": station_id,
-                "file_path": file_path,
-                "lat_dd": float(lat),
-                "x": float(x),
-                "long_dd": float(long),
-                "y": float(y),
-                "GMT": int(gmt),
-                "record_length": int(record_length),
-                "num_parameters": int(num_params),
-                "other": other
-            }
-            station_list.append(station)
+            if len(station_info) == 10:
+                station_id, file_path, lat, y, long, x, gmt, record_length, num_params, other = station_info
+                station = {
+                    "station_id": station_id,
+                    "file_path": file_path,
+                    "lat_dd": float(lat),
+                    "x": float(x),
+                    "long_dd": float(long),
+                    "y": float(y),
+                    "GMT": int(gmt),
+                    "record_length": int(record_length),
+                    "num_parameters": int(num_params),
+                    "other": other
+                }
+                station_list.append(station)
 
-        elif len(station_list) != num_stations:
+        if len(station_list) != num_stations:
             print("Error: Number of stations does not match the specified count.")
-            return None
 
         return station_list
 
