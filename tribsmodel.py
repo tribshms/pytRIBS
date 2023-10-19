@@ -2,6 +2,8 @@
 
 import numpy as np
 import geopandas as gpd
+import datetime
+import getpass
 import shutil
 import pyproj
 from shapely.geometry import LineString
@@ -358,6 +360,17 @@ class Model(object):
 
     def write_input_file(self, output_file_path):
         with open(output_file_path, 'w') as output_file:
+
+            current_datetime = datetime.datetime.now()
+            current_user = getpass.getuser()
+
+            formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
+
+
+            output_file.write(f"Created by: {current_user}\n")
+            output_file.write(f"On: {formatted_datetime}\n")
+
+
             for key, subdict in self.options.items():
                 if "key_word" in subdict and "value" in subdict:
                     keyword = subdict["key_word"]
@@ -583,8 +596,10 @@ class Model(object):
         result = [item for item in data.values() if any(tag_name in tag for tag in item.get("tags", []))]
 
         # Display the filtered sub-dictionaries
-        for item in result:
-            print(item)
+        for dictionary in result:
+            for item in dictionary:
+                if item != "tags":
+                    print(item+": "+dictionary[item])
 
     def create_input(self):
         """
