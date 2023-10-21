@@ -12,6 +12,7 @@ from shapely.geometry import Polygon
 import argparse
 import pandas as pd
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,9 @@ import matplotlib.dates as mdates
 # geopandas for voronoi and rasterios for rasters, gdal for raster-shapefile conversions
 # ideas on plotting up shapefiles--create overview with partioned reach, create plot of individual partions showing
 # voronoi as shapes/
+
+# remove depricated options, really if they don't work or haven't been tested really shouldn't be exposed.
+
 # in pre-check:
 #   (1) call check if graph flag 2 or 3 is called the graph file contains the resepective reach or nodes? words in file name
 #   (2) check that files actually exist...
@@ -78,23 +82,13 @@ class Model(object):
     def __init__(self):
         # attributes
         self.options = None  # input options for tRIBS model run
-        self.descriptor_files = {}  # dict to store descriptor files
-        self.grid_data_files = {}  # dict to store .gdf files
         self.create_input()
-        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}  # Geographic properties of tRIBS model domain.
 
         # nested classes
         self.Results = Results(self)
 
     # SIMULATION METHODS
-    def create_graph_files(
-            self):  # TODO make it so you can run meshbuilder, and same functionality as pearl scripts, and ksh scripts but using python
-        pass
-
-    def precheck(self):
-        """
-        """
-        pass
 
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
@@ -213,6 +207,9 @@ class Model(object):
         pass
 
     def check_paths(self):
+        """
+        Print input/output options where path does not exist and checks stations descriptor and grid data files.
+        """
         data = self.options  # Assuming m.options is a dictionary with sub-dictionaries
         exists = []
         doesnt = []
@@ -232,7 +229,6 @@ class Model(object):
         print("\nThe following tRIBS inputs do not have paths that exist: \n")
         for item in doesnt:
             print(item["key_word"] + " " + item["describe"])
-
 
         print("\nChecking if station descriptor paths exist.\n")
         rain = self.read_precip_sdf()
@@ -270,7 +266,73 @@ class Model(object):
         else:
             print("No met stations are specified.")
 
-        print("TODO check .gdf files")
+        print("\nChecking if grid files exist.\n ... \n")
+
+        if int(self.options["optlanduse"]["value"]) == 1:
+            print("Model is set to read landuse grid files: checking paths and .gdf file")
+            self.read_grid_data_file("land")
+
+        if int(self.options["optsoiltype"]["value"]) == 1:
+            print("Model is set to read soil grid files: checking paths and .gdf file")
+            self.read_grid_data_file("soil")
+
+        if int(self.options["metdataoption"]["value"]) == 2:
+            print("Model is set to hydro-met grid files: checking paths and .gdf file")
+            self.read_grid_data_file("weather")
+
+    def merge_parllel_voi(self, join=None, result_path=None, format=None, save=True):
+        """
+        Returns geodataframe of merged vornoi polygons from parallel tRIBS model run.
+
+        :param join: Data frame of dynamic or integrated tRIBS model output (optional).
+        :param save: Set to True to save geodataframe (optional, default True).
+        :param result_path: Path to save geodateframe (optional, default OUTFILENAME).
+        :param format: Driver options for writing geodateframe (optional, default = ESRI Shapefile)
+
+        :return: GeoDataFrame
+        """
+
+        outfilename = self.options["outfilename"]["value"]
+
+        pattern = re.compile(r".*_voi\d+\.")  # This pattern matches "_voi" followed by one or more digits
+
+        path_components = outfilename.split(os.path.sep)
+
+        # Exclude the last directory as its actually base name
+        outfilename = os.path.sep.join(path_components[:-1])
+
+        parallel_voi_files = [f for f in os.listdir(outfilename) if pattern.match(f)]  # list of _voi.d+ files
+
+        combined_gdf = gpd.GeoDataFrame()  #
+
+        for file in parallel_voi_files:
+            gdf = self.read_voi_file(file)
+            combined_gdf = combined_gdf.append(gdf, ignore_index=True) # TODO this needs to be fixeds
+
+        combined_gdf = combined_gdf.sort_values(by='ID')
+
+        if join is not None:
+            combined_gdf = combined_gdf.merge(join, on="ID", how="inner")
+
+            # Check for non-matching IDs
+            non_matching_ids = join[~join["ID"].isin(combined_gdf["ID"])]
+
+            if not non_matching_ids.empty:
+                print("Warning: Some IDs from the dynamic or integrated data frame do not match with the voronoi IDs.")
+
+        if save:
+            if result_path is None:
+                result_path = os.path.join(outfilename, "_mergedVoi")
+
+            if format is None:
+                format = "ESRI Shapefile"
+
+            combined_gdf.to_file(result_path, driver=format)
+
+        return combined_gdf
+
+    def merge_parllel_intdyn_files(self):
+        pass
 
     # I/O METHODS
     @staticmethod
@@ -287,8 +349,8 @@ class Model(object):
 
         Example:
             >>> from tribsmodel import Model
-            >>> m = Model('/path/to/.in')
-            >>> node_list = m.read_node_list(m.input_options['nodeoutputlist'])
+            >>> m = Model()
+            >>> node_list = m.read_node_list("Path/To/NodeList")
         """
         try:
             with open(file_path, 'r') as file:
@@ -337,7 +399,14 @@ class Model(object):
 
     def read_input_file(self, file_path):
         """
-        Updates input_options with specified input file.
+        Reads .in file for tRIBS model simulation and assigns values to options attribute.
+        :param file_path: Path to .in file.
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model()
+            >>> m.read_input_file("Path/To/File.in")
+            >>> m.options # shows updated input options
         """
         with open(file_path, 'r') as file:
             lines = file.readlines()
@@ -359,6 +428,10 @@ class Model(object):
             i += 1
 
     def write_input_file(self, output_file_path):
+        """
+        Writes .in file for tRIBS model simulation.
+        :param output_file_path: Location to write input file to.
+        """
         with open(output_file_path, 'w') as output_file:
 
             current_datetime = datetime.datetime.now()
@@ -366,10 +439,8 @@ class Model(object):
 
             formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
-
             output_file.write(f"Created by: {current_user}\n")
-            output_file.write(f"On: {formatted_datetime}\n")
-
+            output_file.write(f"On: {formatted_datetime}\n\n")
 
             for key, subdict in self.options.items():
                 if "key_word" in subdict and "value" in subdict:
@@ -379,6 +450,12 @@ class Model(object):
                     output_file.write(f"{value}\n\n")
 
     def read_precip_sdf(self, file_path=None):
+        """
+        Returns list of precip stations, where information from each station is stored in a dictionary.
+        :param file_path: Reads from options["hydrometstations"]["value"], but can be separately specified.
+        :return: List of dictionaries.
+        """
+
         if file_path is None:
             file_path = self.options["gaugestations"]["value"]
 
@@ -447,10 +524,80 @@ class Model(object):
 
         return datetime_vector, precip_rate_vector
 
+    def read_grid_data_file(self, grid_type):
+        """
+        Returns dictionary with content of a specified Grid Data File (.gdf)
+        :param grid_type: string set to "weather", "soil", of "land", with each corresponding to HYDROMETGRID, SCGRID, LUGRID
+        :return: dictionary containg keys and content: "Number of Parameters","Latitude", "Longitude","GMT Time Zone", "Parameters" (a  list of dicts)
+        """
+
+        if grid_type == "weather":
+            option = self.options["hydrometgrid"]["value"]
+        elif grid_type == "soil":
+            option = self.options["scgrid"]["value"]
+        elif grid_type == "land":
+            option = self.options["lugrid"]["value"]
+
+        parameters = []
+
+        with open(option, 'r') as file:
+            num_parameters = int(file.readline().strip())
+            location_info = file.readline().strip().split()
+            latitude, longitude, gmt_timezone = location_info
+
+            variable_count = 0
+
+            for line in file:
+                parts = line.strip().split()
+                if len(parts) == 3:
+                    variable_name, raster_path, raster_extension = parts
+                    variable_count += 1
+
+                    path_components = raster_path.split(os.path.sep)
+
+                    # Exclude the last directory as its actually base name
+                    raster_path = os.path.sep.join(path_components[:-1])
+
+                    if raster_path != "NO_DATA":
+                        if not os.path.exists(raster_path):
+                            print(
+                                f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
+                        elif os.path.getsize(raster_path) == 0:
+                            print(
+                                f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
+                    elif raster_path == "NO_DATA":
+                        print(
+                            f"Warning: No rasters set for variable '{variable_name}'")
+
+                    parameters.append({
+                        'Variable Name': variable_name,
+                        'Raster Path': raster_path,
+                        'Raster Extension': raster_extension
+                    })
+                else:
+                    print(f"Skipping invalid line: {line}")
+
+            if variable_count > num_parameters:
+                print(
+                    "Warning: The number of variables exceeds the number of parameters. This variable has been reset in dictionary.")
+
+        return {
+            'Number of Parameters': variable_count,
+            'Latitude': latitude,
+            'Longitude': longitude,
+            'GMT Time Zone': gmt_timezone,
+            'Parameters': parameters
+        }
+
     def write_precip_station(self):
         pass
 
     def read_met_sdf(self, file_path=None):
+        """
+        Returns list of met stations, where information from each station is stored in a dictionary.
+        :param file_path: Reads from options["hydrometstations"]["value"], but can be separately specified.
+        :return: List of dictionaries.
+        """
         if file_path is None:
             file_path = self.options["hydrometstations"]["value"]
 
@@ -507,6 +654,19 @@ class Model(object):
 
     # Visualize model domain:
     def read_reach_file(self, filename=None):
+        """
+        Returns GeoDataFrame containing reaches from tRIBS model domain.
+        :param filename: Set to read _reach file specified from OUTFILENAME,but can be changed.
+        :return: GeoDataFrame
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model()
+            >>> m.read_input_file("Path/To/File.in")
+            >>> m.geo["EPSG"] = "EPSG CODE" # Set EPSG code for geographic properties of tRIBS model domain.
+            >>> reaches = m.read_reach_file()
+            >>> reaches.plot(column="ID")
+        """
 
         if filename is None:
             filename = self.options["outfilename"]["value"] + "_reach"
@@ -541,6 +701,19 @@ class Model(object):
         return gdf
 
     def read_voi_file(self, filename=None):
+        """
+        Returns GeoDataFrame containing voronoi polygons from tRIBS model domain.
+        :param filename: Set to read _reach file specified from OUTFILENAME,but can be changed.
+        :return: GeoDataFrame
+
+        Example:
+            >>> from tribsmodel import Model
+            >>> m = Model()
+            >>> m.read_input_file("Path/To/File.in")
+            >>> m.geo["EPSG"] = "EPSG CODE" # Set EPSG code for geographic properties of tRIBS model domain.
+            >>> voi = m.read_voi_file()
+            >>> voi.to_file("path/to/output", driver="ESRI Shapefile")
+        """
 
         if filename is None:
             filename = self.options["outfilename"]["value"] + "_voi"
@@ -553,23 +726,40 @@ class Model(object):
                 current_points = []
 
                 for line in file:
-                    line = line.strip()
-                    if line == "END":
-                        if current_id is not None:
-                            ids.append(current_id)
-                            if len(current_points) >= 3:
-                                polygons.append(Polygon(current_points))
-                            current_id = None
-                            current_points = []
-                    else:
-                        parts = line.split(',')
-                        if len(parts) == 3:
-                            id_, x, y = map(float, parts)
-                            current_id = id_
-                            current_points.append((x, y))
-                        elif len(parts) == 2:
-                            x, y = map(float, parts)
-                            current_points.append((x, y))
+                    if line.strip() != "END":
+                        parts = line.strip().split(',')
+                        if parts:
+
+                            if len(parts) == 3:
+                                id_, x, y = map(float, parts)
+                                current_id = id_
+                                current_points.append((x, y))
+                            elif len(parts) == 2:
+                                x, y = map(float, parts)
+                                current_points.append((x, y))
+                    elif line.strip() == "END":
+                        ids.append(current_id)
+                        polygons.append(Polygon(current_points))
+                        current_id = None
+                        current_points = []
+
+                    # line = line.strip()
+                    # if line == "END":
+                    #     if current_id is not None:
+                    #         ids.append(current_id)
+                    #         if len(current_points) >= 3:
+                    #             polygons.append(Polygon(current_points))
+                    #         current_id = None
+                    #         current_points = []
+                    # else:
+                    #     parts = line.split(',')
+                    #     if len(parts) == 3:
+                    #         id_, x, y = map(float, parts)
+                    #         current_id = id_
+                    #         current_points.append((x, y))
+                    #     elif len(parts) == 2:
+                    #         x, y = map(float, parts)
+                    #         current_points.append((x, y))
 
             if not ids or not polygons:
                 raise ValueError("No valid data found in " + filename)
@@ -589,6 +779,14 @@ class Model(object):
 
     # CONSTRUCTOR AND BASIC I/O FUNCTIONS
     def print_tags(self, tag_name):
+        """
+        Prints .in options for a specified tag.
+        :param tag_name: Currently: "io", input/output, "physical", physical model params, "time", time parameters,
+        "opts", parameters for model options, "restart", restart capabilities, "parallel", parallel options.
+
+        Example:
+            >>> m.print_tags("io")
+        """
 
         data = self.options  # Assuming m.options is a dictionary with sub-dictionaries
 
@@ -599,7 +797,9 @@ class Model(object):
         for dictionary in result:
             for item in dictionary:
                 if item != "tags":
-                    print(item+": "+dictionary[item])
+                    print(item + ": " + dictionary[item])
+                elif item == "tags":
+                    print("\n")
 
     def create_input(self):
         """
@@ -779,6 +979,9 @@ class Model(object):
             "bedrockfile": {"key_word": "BEDROCKFILE:", "describe": "Bedrock depth ASCII grid (*.brd)", "value": None,
                             "tags": ["io"]},
             "lugrid": {"key_word": "LUGRID:", "describe": "Land cover grid data file (*.gdf)", "value": None,
+                       "tags": ["io"]},
+            "scgrid": {"key_word": "SCGRID:", "describe": "Soil grid data file (*.gdf). Note OPTSOILTYPE must = 1 if "
+                                                          "inputing soil grids", "value": None,
                        "tags": ["io"]},
             "tlinke": {"key_word": "TLINKE:", "describe": "Atmospheric turbidity parameter", "value": 2.5,
                        "tags": ["physical"]},
