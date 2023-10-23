@@ -280,6 +280,8 @@ class Model(object):
             print("Model is set to hydro-met grid files: checking paths and .gdf file")
             self.read_grid_data_file("weather")
 
+        #TODO needs to return a 1 or 0 depending on selected options, where a 1 indicates for options specified no issuses should arise.
+
     def merge_parllel_voi(self, join=None, result_path=None, format=None, save=True):
         """
         Returns geodataframe of merged vornoi polygons from parallel tRIBS model run.
@@ -331,8 +333,56 @@ class Model(object):
 
         return combined_gdf
 
-    def merge_parllel_intdyn_files(self):
-        pass
+    def merge_parllel_spatial_files(self, suffix = "_00d", dtime = 0, write = True):
+        """
+        Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
+        :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
+        :param int dtime : Option to specify time step at which to start merge of files.
+        :param bool write: Option to write dataframes to file.
+        :return: Dictionary of pandas dataframes.
+        """
+
+        runtime = int(self.options["runtime"]["value"])
+        spopintrvl = int(self.options["spopintrvl"]["value"])
+        outfilename = self.options["outfilename"]["value"]
+        #outhydrofilename = self.options["outhydrofilename"]["value"]
+
+        dyn_data = {}
+
+        while dtime <= runtime:
+            processes = 0
+            otime = str(dtime).zfill(4)
+            dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
+            # df = pd.DataFrame()
+
+            if os.path.exists(dynfile):
+                while os.path.exists(dynfile):
+                    if processes == 0:
+                        df = pd.read_csv(dynfile, header=0)
+                        processes += 1
+                        dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
+
+                    else:
+                        df = pd.concat([df, pd.read_csv(dynfile, header=0)])
+                        processes += 1
+                        dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
+
+                df = df.sort_values(by='ID')
+
+                if write:
+                    df.to_csv(f"{outfilename}.{otime}{suffix}", index=False)
+
+                dyn_data[otime] = df
+
+
+            elif os.path.exists(dynfile):
+                print("Cannot find dynamic output file:" + dynfile)
+                break
+
+            dtime += spopintrvl
+
+        return dyn_data
+
 
     # I/O METHODS
     @staticmethod
@@ -733,7 +783,7 @@ class Model(object):
                             if len(parts) == 3:
                                 id_, x, y = map(float, parts)
                                 current_id = id_
-                                current_points.append((x, y))
+                                #current_points.append((x, y)) # TODO this is node location, should write out to seperate point shapefile.
                             elif len(parts) == 2:
                                 x, y = map(float, parts)
                                 current_points.append((x, y))
