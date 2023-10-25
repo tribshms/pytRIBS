@@ -219,6 +219,28 @@ class Model(object):
 
         # Display the filtered sub-dictionaries
         for item in result:
+
+            # special look at outfilename because:
+            # (1) includes base name and not actual path
+            # (2) tRIBS will error out if it doesn't exist, but won't tell you explicitly why.
+
+            if item["key_word"] == "OUTFILENAME:":
+                print("Checking OUTFILENAME:")
+                path = item["value"]
+                index = path.rfind('/')  # Find the last occurrence of '/'
+
+                if index != -1:
+                    path = path[:index + 1]  # Include the '/' in the result
+                else:
+                    path = path  # Handle the case where there is no '/'
+
+                flag = os.path.exists(path)
+
+                if flag:
+                    print("Path for OUTFILENAME: exists")
+                else:
+                    print("Warning!!! Path for OUTFILENAME: does not exist")
+
             if item["value"] is not None:
                 flag = os.path.exists(item["value"])
                 if flag:
@@ -280,7 +302,7 @@ class Model(object):
             print("Model is set to hydro-met grid files: checking paths and .gdf file")
             self.read_grid_data_file("weather")
 
-        #TODO needs to return a 1 or 0 depending on selected options, where a 1 indicates for options specified no issuses should arise.
+        # TODO needs to return a 1 or 0 depending on selected options, where a 1 indicates for options specified no issuses should arise.
 
     def merge_parllel_voi(self, join=None, result_path=None, format=None, save=True):
         """
@@ -309,7 +331,7 @@ class Model(object):
 
         for file in parallel_voi_files:
             gdf = self.read_voi_file(file)
-            combined_gdf = combined_gdf.append(gdf, ignore_index=True) # TODO this needs to be fixeds
+            combined_gdf = combined_gdf.append(gdf, ignore_index=True)  # TODO this needs to be fixeds
 
         combined_gdf = combined_gdf.sort_values(by='ID')
 
@@ -333,7 +355,7 @@ class Model(object):
 
         return combined_gdf
 
-    def merge_parllel_spatial_files(self, suffix = "_00d", dtime = 0, write = True):
+    def merge_parllel_spatial_files(self, suffix="_00d", dtime=0, write=True):
         """
         Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
         :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
@@ -345,7 +367,7 @@ class Model(object):
         runtime = int(self.options["runtime"]["value"])
         spopintrvl = int(self.options["spopintrvl"]["value"])
         outfilename = self.options["outfilename"]["value"]
-        #outhydrofilename = self.options["outhydrofilename"]["value"]
+        # outhydrofilename = self.options["outhydrofilename"]["value"]
 
         dyn_data = {}
 
@@ -382,7 +404,6 @@ class Model(object):
             dtime += spopintrvl
 
         return dyn_data
-
 
     # I/O METHODS
     @staticmethod
@@ -770,59 +791,64 @@ class Model(object):
 
         ids = []
         polygons = []
+        points = []
+        line_count = 0
+
         if os.path.exists(filename):
             with open(filename, 'r') as file:
                 current_id = None
-                current_points = []
+                current_voi_points = []
+                current_node_points = []
 
                 for line in file:
+
+                    line_count += 1
+
                     if line.strip() != "END":
                         parts = line.strip().split(',')
-                        if parts:
 
+                        if parts:
                             if len(parts) == 3:
                                 id_, x, y = map(float, parts)
                                 current_id = id_
-                                #current_points.append((x, y)) # TODO this is node location, should write out to seperate point shapefile.
+                                current_node_points.append((x, y))
                             elif len(parts) == 2:
                                 x, y = map(float, parts)
-                                current_points.append((x, y))
+                                current_voi_points.append((x, y))
+
                     elif line.strip() == "END":
+
+                        if current_id is None:
+                            break  ## catch end of file w/ two ends in a row
+
                         ids.append(current_id)
-                        polygons.append(Polygon(current_points))
+                        polygons.append(Polygon(current_voi_points))
+                        points.append(Point(current_node_points))
+
                         current_id = None
-                        current_points = []
+                        current_voi_points = []
+                        current_node_points = []
 
-                    # line = line.strip()
-                    # if line == "END":
-                    #     if current_id is not None:
-                    #         ids.append(current_id)
-                    #         if len(current_points) >= 3:
-                    #             polygons.append(Polygon(current_points))
-                    #         current_id = None
-                    #         current_points = []
-                    # else:
-                    #     parts = line.split(',')
-                    #     if len(parts) == 3:
-                    #         id_, x, y = map(float, parts)
-                    #         current_id = id_
-                    #         current_points.append((x, y))
-                    #     elif len(parts) == 2:
-                    #         x, y = map(float, parts)
-                    #         current_points.append((x, y))
+            if line_count <= 1:
+                print(filename + "is empty.")
+                return None
 
+            # Package Voronoi
             if not ids or not polygons:
                 raise ValueError("No valid data found in " + filename)
 
-            features = {'ID': ids, 'geometry': polygons}
+            voi_features = {'ID': ids, 'geometry': polygons}
+            node_features = {'ID': ids, 'geometry': points}
 
             if self.geo["EPSG"] is not None:
-                gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+                voi = gpd.GeoDataFrame(voi_features, crs=self.geo["EPSG"])
+                nodes = gpd.GeoDataFrame(node_features, crs=self.geo["EPSG"])
             else:
-                gdf = gpd.GeoDataFrame(features)
+                voi = gpd.GeoDataFrame(voi_features)
+                nodes = gpd.GeoDataFrame(node_features)
                 print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
+            return [voi, nodes]
 
-            return gdf
         else:
             print("Voi file not found.")
             return None
@@ -967,7 +993,8 @@ class Model(object):
             "gfluxoption": {"key_word": "GFLUXOPTION:", "describe": "Option for ground heat flux\n" + \
                                                                     "0  Inactive ground heat flux\n" + \
                                                                     "1  Temperature gradient method\n" + \
-                                                                    "2  Force_Restore method", "value": 2},
+                                                                    "2  Force_Restore method", "value": 2,
+                            'tags': ['opts']},
             "metdataoption": {"key_word": "METDATAOPTION:", "describe": "Option for meteorological data\n" + \
                                                                         "0  Inactive meteorological data\n" + \
                                                                         "1  Weather station point data\n" +
