@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 
 
-extra_path = "/Users/lraming/Documents/Repos/GP4"
+extra_path = "/"
 if extra_path not in sys.path:
     sys.path.append(extra_path)
 

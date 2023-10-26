@@ -873,7 +873,7 @@ class Model(object):
         for dictionary in result:
             for item in dictionary:
                 if item != "tags":
-                    print(item + ": " + dictionary[item])
+                    print(item + ": " + str(dictionary[item]))
                 elif item == "tags":
                     print("\n")
 
