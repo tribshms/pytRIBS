@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -89,6 +90,10 @@ class Model(object):
         self.Results = Results(self)
 
     # SIMULATION METHODS
+    def __getattr__(self, name):
+        if name in self.options:
+            return self.options[name]
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
@@ -250,11 +255,10 @@ class Model(object):
 
         print("\nThe following tRIBS inputs do not have paths that exist: \n")
         for item in doesnt:
-            print(item["key_word"] + " " + item["describe"])
+            print(f"{item['key_word']} {item['describe']}")
 
         print("\nChecking if station descriptor paths exist.\n")
         rain = self.read_precip_sdf()
-        print("...")
 
         flags = []
         if rain is not None:
@@ -263,7 +267,7 @@ class Model(object):
                 flags.append(flag)
 
                 if not flag:
-                    print(station["file_path"] + " does not exist")
+                    print(f"{station['file_path']} does not exist")
 
             if all(flags):
                 print("All rain gauge paths exist.")
@@ -271,7 +275,6 @@ class Model(object):
             print("No rain gauges are specified.")
 
         met = self.read_met_sdf()
-        print("...")
 
         flags = []
         if met is not None:
@@ -288,7 +291,7 @@ class Model(object):
         else:
             print("No met stations are specified.")
 
-        print("\nChecking if grid files exist.\n ... \n")
+        print("\nChecking if grid files exist.\n")
 
         if int(self.options["optlanduse"]["value"]) == 1:
             print("Model is set to read landuse grid files: checking paths and .gdf file")
@@ -299,10 +302,62 @@ class Model(object):
             self.read_grid_data_file("soil")
 
         if int(self.options["metdataoption"]["value"]) == 2:
-            print("Model is set to hydro-met grid files: checking paths and .gdf file")
-            self.read_grid_data_file("weather")
+            print("Model is set to hydro-met grid files: checking paths and .gdf file\n")
+            wgdf = self.read_grid_data_file("weather")
+
+            date_format = '%m/%d/%Y/%H/%M'
+
+            missing_files = []
+
+            print("\nChecking that individual grid files are continuous (1 hr time steps) across the model simulation "
+                  "time period\n")
+
+            for params in wgdf["Parameters"]:
+                directory = params['Raster Path']
+                ext = params['Raster Extension']
+                var = params['Variable Name']
+                files = os.listdir(directory)
+
+                expected_time = datetime.datetime.strptime(self.startdate['value'], date_format)
+                end_time = expected_time + datetime.timedelta(hours=int(self.runtime['value']))
+
+                if directory is None:
+                    print(f"No files were checked for {var}.")
+                    continue
+
+                print(f"Checking {directory} :")
+
+                previous_month = None
+
+                while expected_time <= end_time and directory is not None:
+                    expected_filename = f"{var}{expected_time.strftime('%m%d%Y%H')}.{ext}"
+
+                    current_month = expected_time.month
+
+                    if current_month != previous_month:
+                        print(expected_time, end="\r")
+                        previous_month = current_month
+                        sys.stdout.flush()
+                        time.sleep(0.001)
+
+                    if expected_filename not in files:
+                        print(f"Missing file: {expected_filename}")
+                        missing_files.append(expected_filename)
+
+                    dt = datetime.timedelta(hours=1)
+                    expected_time += dt
+
+                if len(missing_files) == 0:
+                    print(f"No missing files for {var}")
+                elif len(missing_files) > 0:
+                    print(f"Missing files for {var}")
+
+            if len(missing_files) > 0:
+                print(f"Returing list of missing files for hydrometgrid option")
+                return missing_files
 
         # TODO needs to return a 1 or 0 depending on selected options, where a 1 indicates for options specified no issuses should arise.
+
 
     def merge_parllel_voi(self, join=None, result_path=None, format=None, save=True):
         """
@@ -317,22 +372,24 @@ class Model(object):
         """
 
         outfilename = self.options["outfilename"]["value"]
-
-        pattern = re.compile(r".*_voi\d+\.")  # This pattern matches "_voi" followed by one or more digits
-
         path_components = outfilename.split(os.path.sep)
-
         # Exclude the last directory as its actually base name
         outfilename = os.path.sep.join(path_components[:-1])
 
-        parallel_voi_files = [f for f in os.listdir(outfilename) if pattern.match(f)]  # list of _voi.d+ files
+        parallel_voi_files = [f for f in os.listdir(outfilename) if 'voi.' in f] # list of _voi.d+ files
 
-        combined_gdf = gpd.GeoDataFrame()  #
+        if len(parallel_voi_files) == 0:
+            print(f"Cannot find voi files at: {outfilename}. Returning None")
+            return None
+
+        voi_list = []
+        #gdf = gpd.GeoDataFrame(columns=['ID', 'geometry'])
 
         for file in parallel_voi_files:
-            gdf = self.read_voi_file(file)
-            combined_gdf = combined_gdf.append(gdf, ignore_index=True)  # TODO this needs to be fixeds
+            voi = self.read_voi_file(f"{outfilename}/{file}")
+            voi_list.append(voi[0])
 
+        combined_gdf = gpd.pd.concat(voi_list, ignore_index=True)
         combined_gdf = combined_gdf.sort_values(by='ID')
 
         if join is not None:
@@ -404,6 +461,35 @@ class Model(object):
             dtime += spopintrvl
 
         return dyn_data
+
+    def read_point_files(self):
+
+        file_path = self.options['pointfilename']['value']
+
+        node_points = []
+        node_z = []
+        node_bc = []
+
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            num_points = lines.pop(0)
+
+            for line in lines:
+                parts = line.strip().split()
+                if len(parts) != 0:
+                    x, y, z, bc = map(float, parts)
+                    node_points.append(Point(x,y))
+                    node_z.append(z)
+                    node_bc.append(bc)
+
+            node_features = {'bc': node_bc, 'geometry': node_points, 'elevation': node_z}
+            if self.geo["EPSG"] is not None:
+                nodes = gpd.GeoDataFrame(node_features, crs=self.geo["EPSG"])
+            else:
+                nodes = gpd.GeoDataFrame(node_features)
+                print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
+            return nodes
+
 
     # I/O METHODS
     @staticmethod
@@ -633,12 +719,15 @@ class Model(object):
                         if not os.path.exists(raster_path):
                             print(
                                 f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
+                            raster_path = None
                         elif os.path.getsize(raster_path) == 0:
                             print(
                                 f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
+                            raster_path = None
                     elif raster_path == "NO_DATA":
                         print(
                             f"Warning: No rasters set for variable '{variable_name}'")
+                        raster_path = None
 
                     parameters.append({
                         'Variable Name': variable_name,
