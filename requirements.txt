@@ -1,5 +1,4 @@
 numpy
-argparse
 pandas
 matplotlib
 geopandas

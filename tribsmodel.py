@@ -4,21 +4,16 @@ import numpy as np
 import geopandas as gpd
 import datetime
 import getpass
-import shutil
-import pyproj
 from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
-import argparse
 import pandas as pd
 import os
-import re
 import shutil
 import subprocess
 import sys
 import time
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
 
 # TODO
