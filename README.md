@@ -6,3 +6,5 @@ tRIBS pre-to-post procsessing package is a python module designed to allow users
   * check to make sure that the number of parameters in first line matches the number of parameters in file for data files
   * check that theta*_t and theta*_s are within range of theta_s and theta_r
   * check file paths are correct
+- post-processing:
+  * After Merge calls compress parallel files--should save tons on memory storage and remove clutter from results.
