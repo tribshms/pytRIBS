@@ -422,12 +422,13 @@ class Model(object):
         # outhydrofilename = self.options["outhydrofilename"]["value"]
 
         dyn_data = {}
+        times = [dtime + i * spopintrvl for i in range((runtime - dtime) // spopintrvl + 1)]
+        times.append(runtime)
 
-        while dtime <= runtime:
+        for _time in times:
             processes = 0
-            otime = str(dtime).zfill(4)
+            otime = str(_time).zfill(4)
             dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
-            # df = pd.DataFrame()
 
             if os.path.exists(dynfile):
                 while os.path.exists(dynfile):
@@ -452,8 +453,6 @@ class Model(object):
             elif os.path.exists(dynfile):
                 print("Cannot find dynamic output file:" + dynfile)
                 break
-
-            dtime += spopintrvl
 
         return dyn_data
 
@@ -1294,7 +1293,7 @@ class Results(Model):
 
         """
         if mrf_file is None:
-            mrf_file = self.options["outfilename"]["value"] + str(self.options["runtime"]["value"]) + "_00.mrf"
+            mrf_file = self.options["outhydrofilename"]["value"] + str(self.options["runtime"]["value"]) + "_00.mrf"
 
         # Read the first two rows to get column names and units
         with open(mrf_file, 'r') as file:
@@ -1559,7 +1558,7 @@ class Results(Model):
        :return:
        """
 
-        plt.style.use('bmh')
+        #plt.style.use('bmh')
         barwidth = 0.25
         fig, ax = plt.subplots()
 
