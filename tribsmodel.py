@@ -1,6 +1,8 @@
 # tribsmodel.py
 
 import numpy as np
+import glob
+import re
 import geopandas as gpd
 import datetime
 import getpass
@@ -1318,7 +1320,7 @@ class Results(Model):
         self.mrf = results_data_frame
         return units
 
-    def get_element_results(self, node_file=None):
+    def get_element_results(self):
         """
         Function assigns a dictionary to self as self.element_results. The keys in the dictionary represent a data
         frame with the content of the .invpixel file and each subsequent node. Key for .invpixel is "invar",
@@ -1326,27 +1328,45 @@ class Results(Model):
         of results and is assigned to the aforementioned dictionary.
         """
 
-        if node_file is None:
-            node_file = self.options["nodeoutputlist"]["value"]
+        pattern = r'(\D+)(\d+)\.pixel(?:\.(\d+))?\.?$'
 
-        # read in node list
-        nodes = self.read_node_list(node_file)
+        # List to store first integers
+        node_id = []
 
-        # read in .ivpixel
-        invar_path = self.options["outfilename"]["value"] + ".ivpixel"
-        invar_data_frame = pd.read_csv(invar_path, sep=r"\s+", header=0)
-        self.element = {"invar": invar_data_frame}
+        # Path to the directory containing the files
+        directory_path = self.options["outfilename"]["value"]
+        # Find the last occurrence of '/'
+        last_slash_index = directory_path.rfind('/')
 
-        # for each node read in element file read and set up a dictionary containing node
-        for n in nodes:
-            self.element.update({n: self.read_element_files(n)})
+        # Truncate the string at the last occurrence of '/'
+        directory_path = directory_path[:last_slash_index + 1]
 
-    def read_element_files(self, node):
+        # Search for files matching the pattern
+        if os.path.exists(directory_path):
+            file_list = glob.glob(directory_path + '*.*')
+        else:
+            print('Cannot find results directory. Returning nothing.')
+            return
+
+        if len(file_list) ==0:
+            print("Pixel files not found. Returning nothing.")
+            return
+
+        # Iterate through the files
+        for file_name in file_list:
+            file = file_name.split('/')[-1]
+            match = re.match(r'(\D+)(\d+)\.pixel(?:\.(\d+))?\.?$', file)
+            if match:
+                print(f"Reading in: {file}")
+                first_integer = int(match.group(2))
+                node_id.append(first_integer)
+                self.element.update({first_integer: self.read_element_files(file_name)})
+
+    def read_element_files(self, element_results_file):
         """
         Reads in .pixel from tRIBS model results and updates hourly timestep to time
         """
-        element_results_file = self.options["outfilename"]["value"] + str(
-            node) + ".pixel"  # need to add catch for parallel runs and if file doesn't exist
+
         results_data_frame = pd.read_csv(element_results_file, sep=r"\s+", header=0)
 
         # update time from hourly time step to date
