@@ -412,7 +412,7 @@ class Model(object):
 
         return combined_gdf
 
-    def merge_parllel_spatial_files(self, suffix="_00d", dtime=0, write=True):
+    def merge_parllel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None):
         """
         Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
         :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
@@ -440,16 +440,26 @@ class Model(object):
                     if processes == 0:
                         processes += 1
                         try:
-                            df = pd.read_csv(dynfile, header=0)
+                            if header:
+                                df = pd.read_csv(dynfile, header=0)
+                            else:
+                                df = pd.read_csv(dynfile, header=None, names=colnames)
+
                         except pd.errors.EmptyDataError:
-                            print(f'The following file is empty: {dynfile}')
+                            print(f'The first file is empty: {dynfile}.\n Can not merge files.')
+                            break
 
                         dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
 
                     else:
                         processes += 1
                         try:
-                            df = pd.concat([df, pd.read_csv(dynfile, header=0)])
+
+                            if header:
+                                df = pd.concat([df, pd.read_csv(dynfile, header=0)])
+                            else:
+                                df = pd.concat([df, pd.read_csv(dynfile, header=None, names=colnames)])
+
                         except pd.errors.EmptyDataError:
                             print(f'The following file is empty: {dynfile}')
                         dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
