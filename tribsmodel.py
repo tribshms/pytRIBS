@@ -435,13 +435,20 @@ class Model(object):
             if os.path.exists(dynfile):
                 while os.path.exists(dynfile):
                     if processes == 0:
-                        df = pd.read_csv(dynfile, header=0)
                         processes += 1
+                        try:
+                            df = pd.read_csv(dynfile, header=0)
+                        except pd.errors.EmptyDataError:
+                            print(f'The following file is empty: {dynfile}')
+
                         dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
 
                     else:
-                        df = pd.concat([df, pd.read_csv(dynfile, header=0)])
                         processes += 1
+                        try:
+                            df = pd.concat([df, pd.read_csv(dynfile, header=0)])
+                        except pd.errors.EmptyDataError:
+                            print(f'The following file is empty: {dynfile}')
                         dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
 
                 df = df.sort_values(by='ID')
