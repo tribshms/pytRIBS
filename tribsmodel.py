@@ -464,7 +464,8 @@ class Model(object):
                             print(f'The following file is empty: {dynfile}')
                         dynfile = f"{outfilename}.{otime}{suffix}.{processes}"
 
-                df = df.sort_values(by='ID')
+                if header:
+                    df = df.sort_values(by='ID')
 
                 if write:
                     df.to_csv(f"{outfilename}.{otime}{suffix}", index=False)
