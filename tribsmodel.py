@@ -384,7 +384,10 @@ class Model(object):
 
         for file in parallel_voi_files:
             voi = self.read_voi_file(f"{outfilename}/{file}")
-            voi_list.append(voi[0])
+            if voi is not None:
+                voi_list.append(voi[0])
+            else:
+                print(f'Voi file {file} is empty.')
 
         combined_gdf = gpd.pd.concat(voi_list, ignore_index=True)
         combined_gdf = combined_gdf.sort_values(by='ID')
