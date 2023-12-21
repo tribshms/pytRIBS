@@ -412,19 +412,22 @@ class Model(object):
 
         return combined_gdf
 
-    def merge_parllel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None):
+    def merge_parllel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None, single=True):
         """
         Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
         :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
         :param int dtime : Option to specify time step at which to start merge of files.
         :param bool write: Option to write dataframes to file.
+        :param bool header: Set to False if headers are not provided with spatial files.
+        :param bool colnames: If header = False, column names can be provided for the dataframe--but it is expected the first column is ID.
+        :param bool single: If single = True then only spatial files specified at dtime are merged.
         :return: Dictionary of pandas dataframes.
         """
 
         runtime = int(self.options["runtime"]["value"])
         spopintrvl = int(self.options["spopintrvl"]["value"])
         outfilename = self.options["outfilename"]["value"]
-        # outhydrofilename = self.options["outhydrofilename"]["value"]
+
 
         dyn_data = {}
         times = [dtime + i * spopintrvl for i in range((runtime - dtime) // spopintrvl + 1)]
@@ -471,6 +474,9 @@ class Model(object):
                     df.to_csv(f"{outfilename}.{otime}{suffix}", index=False)
 
                 dyn_data[otime] = df
+
+                if single:
+                    break
 
 
             elif os.path.exists(dynfile):
@@ -692,11 +698,13 @@ class Model(object):
                     datetime_vector.append(date_time)
                     precip_rate_vector.append(float(precip_rate))
 
-        # Display the first few elements of the datetime and precipitation rate vectors
-        for i in range(min(5, len(datetime_vector))):
-            print(f"Datetime: {datetime_vector[i]}, Precipitation Rate: {precip_rate_vector[i]}")
+        # # Display the first few elements of the datetime and precipitation rate vectors
+        # for i in range(min(5, len(datetime_vector))):
+        #     print(f"Datetime: {datetime_vector[i]}, Precipitation Rate: {precip_rate_vector[i]}")
 
-        return datetime_vector, precip_rate_vector
+        df = pd.DataFrame({'Date': datetime_vector, 'Precip':precip_rate_vector})
+
+        return os.path.basename(file_path), df
 
     def read_grid_data_file(self, grid_type):
         """
@@ -1435,7 +1443,7 @@ class Results(Model):
         :return: pandas data frame with waterbalance information
         """
 
-        begin, end, timeframe = self.water_balance_dates(data, method)
+        begin, end, timeframe = self.water_balance_dates(data.Time, method)
 
         for n in range(0, len(timeframe)):
             if n == 0:
@@ -1520,7 +1528,7 @@ class Results(Model):
         :return: pandas data frame with waterbalance information
         """
 
-        begin, end, timeframe = self.water_balance_dates(data, method)
+        begin, end, timeframe = self.water_balance_dates(data.Time, method)
 
         for n in range(0, len(timeframe)):
             if n == 0:
@@ -1636,16 +1644,18 @@ class Results(Model):
         return fig, ax
 
     @staticmethod
-    def water_balance_dates(results_data_frame, method):
+    def water_balance_dates(time_vector, method):
         """
-        data = pandas data frame of .pixel file, methods select approach for segmenting data['Time_hr'].
-        "water_year", segments time frame by water year and discards results that do not start first or end on
-        last water year in data. "year", just segments based on year, "month" segments base on month,
-        and "cold_warm",segments on cold (Oct-April) and warm season (May-Sep).
+        Returns three vectors of time objects for specified time intrevals: beginning dates, ending dates,
+        and years.
+        :param time_vector: Vector containing sequential dates from model simulations.
+        :param str method: String specifying time interval to segment time vector. "water_year", segments time frame by water year and
+        discards results that do not start first or end on last water year in data. "year", just segments based on
+        year, "month" segments base on month, and "cold_warm",segments on cold (Oct-April) and warm season (May-Sep).
         """
 
-        min_date = min(results_data_frame.Time)
-        max_date = max(results_data_frame.Time)
+        min_date = min(time_vector)
+        max_date = max(time_vector)
         begin_dates = None
         end_dates = None
 
