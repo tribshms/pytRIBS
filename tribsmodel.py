@@ -1315,7 +1315,7 @@ class Results(Model):
     """
 
     def __init__(self, mod):
-        self.element = None
+        self.element = dict
         self.mrf = None
         self.options = mod.options
 
@@ -1354,7 +1354,7 @@ class Results(Model):
         Function assigns a dictionary to self as self.element_results. The keys in the dictionary represent a data
         frame with the content of the .invpixel file and each subsequent node. Key for .invpixel is "invar",
         and for nodes is simply the node ID. For each node this function reads in element file and create data frame
-        of results and is assigned to the aforementioned dictionary.
+        of results and is assigned to the aforementioned dictionary. TODO:
         """
 
         pattern = r'(\D+)(\d+)\.pixel(?:\.(\d+))?\.?$'
