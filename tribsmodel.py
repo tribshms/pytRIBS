@@ -6,6 +6,8 @@ import re
 import geopandas as gpd
 import datetime
 import getpass
+
+import rasterio
 from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
@@ -85,16 +87,18 @@ class Model(object):
 
         # nested classes
         self.Results = Results(self)
-
     # SIMULATION METHODS
     def __getattr__(self, name):
         if name in self.options:
             return self.options[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    def __dir__(self):
+        # Include the keys from the options dictionary and the methods of the class
+        return list(set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
 
     @staticmethod
     def run(executable, input_file, mpi_command=None, tribs_flags=None, log_path=None,
-            store_input=None, timeit=True):
+            store_input=None, timeit=True, verbose=True):
         """
         Run a tRIBS model simulation with optional arguments.
 
@@ -129,7 +133,10 @@ class Model(object):
 
         print(command)
 
-        subprocess.run(command)
+        if verbose:
+            subprocess.run(command)
+        else:
+            subprocess.run(command,stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @staticmethod
     def build(source_file, build_directory, verbose=True, exe="tRIBS", parallel="ON", cxx_flags="-O2"):
@@ -355,7 +362,6 @@ class Model(object):
 
         # TODO needs to return a 1 or 0 depending on selected options, where a 1 indicates for options specified no issuses should arise.
 
-
     def merge_parllel_voi(self, join=None, result_path=None, format=None, save=True):
         """
         Returns geodataframe of merged vornoi polygons from parallel tRIBS model run.
@@ -373,14 +379,14 @@ class Model(object):
         # Exclude the last directory as its actually base name
         outfilename = os.path.sep.join(path_components[:-1])
 
-        parallel_voi_files = [f for f in os.listdir(outfilename) if 'voi.' in f] # list of _voi.d+ files
+        parallel_voi_files = [f for f in os.listdir(outfilename) if 'voi.' in f]  # list of _voi.d+ files
 
         if len(parallel_voi_files) == 0:
             print(f"Cannot find voi files at: {outfilename}. Returning None")
             return None
 
         voi_list = []
-        #gdf = gpd.GeoDataFrame(columns=['ID', 'geometry'])
+        # gdf = gpd.GeoDataFrame(columns=['ID', 'geometry'])
 
         for file in parallel_voi_files:
             voi = self.read_voi_file(f"{outfilename}/{file}")
@@ -427,7 +433,6 @@ class Model(object):
         runtime = int(self.options["runtime"]["value"])
         spopintrvl = int(self.options["spopintrvl"]["value"])
         outfilename = self.options["outfilename"]["value"]
-
 
         dyn_data = {}
         times = [dtime + i * spopintrvl for i in range((runtime - dtime) // spopintrvl + 1)]
@@ -501,7 +506,7 @@ class Model(object):
                 parts = line.strip().split()
                 if len(parts) != 0:
                     x, y, z, bc = map(float, parts)
-                    node_points.append(Point(x,y))
+                    node_points.append(Point(x, y))
                     node_z.append(z)
                     node_bc.append(bc)
 
@@ -512,7 +517,6 @@ class Model(object):
                 nodes = gpd.GeoDataFrame(node_features)
                 print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
             return nodes
-
 
     # I/O METHODS
     @staticmethod
@@ -671,40 +675,38 @@ class Model(object):
 
         return station_list
 
-    def read_precip_file(self, file_path):
+    @staticmethod
+    def write_precip_sdf(station_list, output_file_path):
+        """
+        Writes a list of precip stations to a flat file.
+        :param station_list: List of dictionaries containing station information.
+        :param output_file_path: Output flat file path.
+        """
+        with open(output_file_path, 'w') as file:
+            # Write metadata line
+            metadata = f"{len(station_list)} {len(station_list[0])}\n"
+            file.write(metadata)
+
+            # Write station information
+            for station in station_list:
+                line = f"{station['station_id']} {station['file_path']} {station['y']} {station['x']} " \
+                       f"{station['record_length']} {station['num_parameters']} {station['elevation']}\n"
+                file.write(line)
+
+    @staticmethod
+    def read_precip_station(file_path):
+        """
+        Returns pandas dataframe of precipitation from a station specified by file_path.
+        :param file_path: Flat file with columns Y M D H R
+        :return: Pandas dataframe
+        """
         # TODO add var for specifying Station ID
+        df = pd.read_csv(file_path, header=0, sep=r"\s+")
+        df.rename(columns={'Y': 'year', 'M': 'month', 'D': 'day', 'H': 'hour'}, inplace=True)
+        df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
+        df.drop(['year', 'month', 'day', 'hour'], axis=1, inplace=True)
 
-        # Initialize empty lists to store datetime and precipitation rate data
-        datetime_vector = []
-        precip_rate_vector = []
-
-        # Open the file and read it line by line
-        with open(file_path, 'r') as file:
-            # Skip the header line if it exists
-            next(file, None)
-
-            for line in file:
-                # Split the line into individual values using whitespace as the delimiter
-                values = line.strip().split()
-
-                # Check if there are enough values for date and time (Year, Month, Day, Hour) and precipitation rate
-                if len(values) >= 5:
-                    year, month, day, hour, precip_rate = values[:5]
-
-                    # Combine the date and time components to create a datetime object
-                    date_time = f"{year}-{month}-{day} {hour}:00:00"
-
-                    # Append the datetime and precipitation rate to their respective lists
-                    datetime_vector.append(date_time)
-                    precip_rate_vector.append(float(precip_rate))
-
-        # # Display the first few elements of the datetime and precipitation rate vectors
-        # for i in range(min(5, len(datetime_vector))):
-        #     print(f"Datetime: {datetime_vector[i]}, Precipitation Rate: {precip_rate_vector[i]}")
-
-        df = pd.DataFrame({'Date': datetime_vector, 'Precip':precip_rate_vector})
-
-        return os.path.basename(file_path), df
+        return df
 
     def read_grid_data_file(self, grid_type):
         """
@@ -774,8 +776,24 @@ class Model(object):
             'Parameters': parameters
         }
 
-    def write_precip_station(self):
-        pass
+    @staticmethod
+    def write_precip_station(df, output_file_path):
+        """
+        Converts a DataFrame with 'date' and 'R' columns to flat file format with columns Y M D H R.
+        :param df: Pandas DataFrame with 'date' and 'R' columns.
+        :param output_file_path: Output flat file path.
+        """
+        # Extract Y, M, D, and H from the 'date' column
+        df['Y'] = df['date'].dt.year
+        df['M'] = df['date'].dt.month
+        df['D'] = df['date'].dt.day
+        df['H'] = df['date'].dt.hour
+
+        # Reorder columns
+        df = df[['Y', 'M', 'D', 'H', 'R']]
+
+        # Write DataFrame to flat file
+        df.to_csv(output_file_path, sep=' ', index=False)
 
     def read_met_sdf(self, file_path=None):
         """
@@ -821,6 +839,46 @@ class Model(object):
             print("Error: Number of stations does not match the specified count.")
 
         return station_list
+
+    @staticmethod
+    def read_ascii(file_path):
+        """
+        Returns dictionary containing 'data', 'profile', and additional metadata.
+        :param file_path: Path to ASCII raster.
+        :return: Dict
+        """
+        raster = {}
+
+        # Open the raster file using rasterio
+        with rasterio.open(file_path) as src:
+            # Read the raster data as a NumPy array
+            raster['data'] = src.read(1)  # Assuming a single band raster, adjust accordingly
+
+            # Access the metadata
+            raster['profile'] = src.profile
+            # raster.update({'ncols': src.width})
+            # raster.update({'nrows': src.height})
+            # raster.update({'xllcorner': src.bounds.left})
+            # raster.update({'yllcorner': src.bounds.bottom})
+            # raster.update({'cellsize': src.res[0]})
+            # raster.update({'nodata_value': src.nodata})
+
+        return raster
+
+    @staticmethod
+    def write_ascii(raster_dict, output_file_path):
+        """
+        Writes raster data and metadata from a dictionary to an ASCII raster file.
+        :param raster_dict: Dictionary containing 'data', 'profile', and additional metadata.
+        :param output_file_path: Output ASCII raster file path.
+        """
+        # Extract data and metadata from the dictionary
+        data = raster_dict['data']
+        profile = raster_dict['profile']
+
+        # Write the data and metadata to the ASCII raster file
+        with rasterio.open(output_file_path, 'w', **profile) as dst:
+            dst.write(data, 1)
 
     def write_met_station(self):
         pass
@@ -1315,7 +1373,7 @@ class Results(Model):
     """
 
     def __init__(self, mod):
-        self.element = dict
+        self.element = {}
         self.mrf = None
         self.options = mod.options
 
@@ -1377,7 +1435,7 @@ class Results(Model):
             print('Cannot find results directory. Returning nothing.')
             return
 
-        if len(file_list) ==0:
+        if len(file_list) == 0:
             print("Pixel files not found. Returning nothing.")
             return
 
@@ -1607,7 +1665,7 @@ class Results(Model):
        :return:
        """
 
-        #plt.style.use('bmh')
+        # plt.style.use('bmh')
         barwidth = 0.25
         fig, ax = plt.subplots()
 
