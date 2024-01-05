@@ -672,7 +672,7 @@ class Model(object):
         return station_list
 
     def read_precip_file(self, file_path):
-        # TODO add var for specifying Station ID
+        # TODO add var for specifying Station ID, replace readin w/ pandas
 
         # Initialize empty lists to store datetime and precipitation rate data
         datetime_vector = []
@@ -821,6 +821,15 @@ class Model(object):
             print("Error: Number of stations does not match the specified count.")
 
         return station_list
+
+    def read_met_file(self, file_path):
+        # TODO add var for specifying Station ID
+        df = pd.read_csv(file_path,header=0,sep='\s+')
+        # convert year, month, day to datetime and drop columns
+        df.rename(columns={'Y': 'year', 'M': 'month', 'D': 'day', 'H': 'hour'}, inplace=True)
+        df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
+        df = df.drop(['year', 'month', 'day', 'hour'], axis=1)
+        return df
 
     def write_met_station(self):
         pass
@@ -1315,7 +1324,7 @@ class Results(Model):
     """
 
     def __init__(self, mod):
-        self.element = dict
+        self.element = {}
         self.mrf = None
         self.options = mod.options
 
