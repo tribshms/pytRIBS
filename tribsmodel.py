@@ -490,6 +490,10 @@ class Model(object):
         return dyn_data
 
     def read_point_files(self):
+        """
+        Returns Pandas dataframe of nodes or point used in tRIBS mesh.
+
+        """
 
         file_path = self.options['pointfilename']['value']
 
@@ -1434,6 +1438,13 @@ class Results(Model):
 
         # Truncate the string at the last occurrence of '/'
         directory_path = directory_path[:last_slash_index + 1]
+        # read in .ivpixel if it exists
+        try:
+            invar_path = self.options["outfilename"]["value"] + ".ivpixel"
+            invar_data_frame = pd.read_csv(invar_path, sep=r"\s+", header=0)
+            self.element = {"invar": invar_data_frame}
+        except FileNotFoundError:
+            print("Invariant pixel files not found. Continuing to read in .pixel files")
 
         # Search for files matching the pattern
         if os.path.exists(directory_path):
@@ -1449,10 +1460,10 @@ class Results(Model):
         # Iterate through the files
         for file_name in file_list:
             file = file_name.split('/')[-1]
-            match = re.match(r'(\D+)(\d+)\.pixel(?:\.(\d+))?\.?$', file)
+            match = re.search(r'(\d+)\.pixel', file)
             if match:
                 print(f"Reading in: {file}")
-                first_integer = int(match.group(2))
+                first_integer = int(match.group(1))
                 node_id.append(first_integer)
                 self.element.update({first_integer: self.read_element_files(file_name)})
 
@@ -1492,8 +1503,9 @@ class Results(Model):
         invar_data_frame = self.element['invar']
 
         for n in nodes:
-            porosity = invar_data_frame.Porosity[invar_data_frame.NodeID == int(n)].values[0]
-            element_area = invar_data_frame.Area_m_sq[invar_data_frame.NodeID == int(n)].values[0]
+            n = int(n)
+            porosity = invar_data_frame.Porosity[invar_data_frame.NodeID == n].values[0]
+            element_area = invar_data_frame.Area_m_sq[invar_data_frame.NodeID == n].values[0]
             waterbalance = self.run_element_water_balance(self.element[n], porosity, element_area, method)
             self.element.update({n: {"pixel": self.element[n], "waterbalance": waterbalance}})
 
@@ -1692,7 +1704,7 @@ class Results(Model):
                 rect.get_x() + rect.get_width() / 2, height + 5, label, ha="center", va="bottom"
             )
 
-        ax.text(len(waterbalance.index) - 5, max(waterbalance.nP), "mean difference: " + "%.0f" % np.mean(netdiff))
+        ax.text(len(waterbalance.index), max(waterbalance.nP), "mean difference: " + "%.0f" % np.mean(netdiff))
 
         waterbalance.plot.bar(ax=ax, y=["nQ", "nET", "dS"], stacked=True, width=barwidth,
                               color=['tab:blue', 'tab:red', 'tab:cyan'])
