@@ -16,7 +16,7 @@ sudo "/Applications/CMake.app/Contents/bin/cmake-gui" --install
 4) Then execute the following code in the terminal, assuming you are in the root directory of HJ_Benchmark
 
 ```bash
-cmake -S src/tribs_sub2020 . -B bin/build 
+cmake -S tP4/tribs_sub2020 . -B bin/build 
 cmake --build bin/build --target all  
 ```
 The first command tells CMake to generate the make files for tribs in a folder called build in bin. Followed by the second line which effectively compiles the code. 

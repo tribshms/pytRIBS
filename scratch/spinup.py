@@ -45,7 +45,7 @@ for i in iterations:
     gwvoi = m.options["outfilename"]["value"] + str(i) + "_gwvoi"
 
     # merger parallel files and write ouyt gwvoi file
-    df = m.merge_parllel_spatial_files(dtime=end_time, write=False)
+    df = m.merge_parallel_spatial_files(dtime=end_time, write=False)
     df = df[str(end_time)]
     df[['ID', 'Nwt']].to_csv(gwvoi, sep='\t', index=False, header=False)
 
