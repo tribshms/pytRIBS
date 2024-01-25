@@ -3,10 +3,21 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 
-def get_mrf_water_balance(instance, method, porosity, bedrock, drainage_area):
+def get_mrf_water_balance(instance, method, porosity, bedrock):
     """
     """
-    waterbalance = instance.run_mrf_water_balance(instance.mrf, porosity, bedrock, drainage_area, method)
+    # make sure watershed_stats dictionary has been updated.
+    watershed_stats_tf = [x is None for _, x in instance.watershed_stats]
+
+    if any(watershed_stats_tf):
+        print("Watershed Stats Are Incomplete: see attribute watershed_stats")
+        return None
+    else:
+        drainage_area = instance.watershed_stats['area']
+        bedrock = instance.watershed_stats['avg_bedrock_depth']
+        porosity = instance.watershed_stats['porosity']
+
+    waterbalance = _run_mrf_water_balance(instance.mrf, porosity, bedrock, drainage_area, method)
     var = {"mrf": instance.mrf, "waterbalance": waterbalance}
     instance.mrf = var
 
@@ -121,7 +132,7 @@ def element_wb_components(element_data_frame, begin, end, porosity, element_area
     return waterbalance
 
 
-def run_mrf_water_balance(instance, data, porosity, bedrock, drainage_area, method):
+def _run_mrf_water_balance(instance, data, porosity, bedrock, drainage_area, method):
     """
 
     :param data:

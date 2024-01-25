@@ -4,9 +4,13 @@ import re
 
 import pandas as pd
 
-import tP4.results._waterbal as _waterbal
+import tP4.results._post as _post
+import tP4.results._waterbalance as _waterbalance
+from tP4.mixins.infile_mixin import InfileMixin
+from tP4.mixins.shared_mixin import SharedMixin
 
-class Results:
+
+class Results(InfileMixin, SharedMixin):
     """
     A tRIBS Results Class.
 
@@ -23,10 +27,69 @@ class Results:
 
     """
 
-    def __init__(self, mod):
+    def __init__(self, input_file, EPSG = None, UTM_Zone = None):
+        # setup model paths and options for Result Class
+        self.options = self.create_input_file()  # input options for tRIBS model run
+        self.read_input_file(input_file)
+
+        # attributes for analysis, plotting, and archiving model results
         self.element = {}
-        self.mrf = None
-        self.options = mod.options
+        self.mrf = {'mrf': None, 'waterbalance': None}
+        self.geo = {"UTM_Zone": UTM_Zone, "EPSG": EPSG, "Projection": None}  # Geographic properties of tRIBS model domain.
+
+        parallel_flag = int(self.options["parallelmode"]['value'])
+
+        # read in integrated spatial vars for waterbalance calcs and spatial maps
+        if parallel_flag == 1:
+            self.int_spatial_vars = self.merge_parallel_spatial_files(suffix="_00i",
+                                                                      dtime=int(self.options['runtime']['value']))
+        elif parallel_flag == 0:
+            runtime = int(self.options["runtime"]["value"])
+
+            outfilename = self.options["outfilename"]["value"]
+            intfile = f"{outfilename}.{runtime}_00i"
+
+            self.int_spatial_vars = pd.read_csv(intfile)
+
+        else:
+            print('Unable To Read Integrated Spatial File (*_00i).')
+            self.voronoi = None
+
+        # read in voronoi files only once
+        if parallel_flag == 1:
+            self.voronoi = self.merge_parallel_voi()
+
+        elif parallel_flag == 0:
+            self.voronoi, _ = self.read_voi_file()
+
+        else:
+            print('Unable To Load Voi File(s).')
+            self.voronoi = None
+
+        self.watershed_stats = {"area": None, "avg_porosity": None, "avg_bedrock_depth": None}
+        self.get_watershed_stats()
+
+        #
+        # # SIMULATION METHODS
+        # def __getattr__(self, name):
+        #     if name in self.options:
+        #         return self.options[name]
+        #     raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+        #
+        # def __dir__(self):
+        #     # Include the keys from the options dictionary and the methods of the class
+        #     return list(
+        #         set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
+
+    def get_watershed_stats(self):
+        # drainage area
+        self.watershed_stats['area'] = self.voronoi['geometry'].area.sum()
+
+        # average porosity
+        self.watershed_stats['avg_porosity'] = self.int_spatial_vars['Porosity'].mean()
+
+        # average bedrock depth
+        self.watershed_stats['avg_bedrock_depth'] = self.int_spatial_vars['Bedrock_Depth_mm'].mean()
 
     def get_mrf_results(self, mrf_file=None):
         """
@@ -122,10 +185,14 @@ class Results:
 
         return results_data_frame
 
-    def get_mrf_water_balance(self, method, porosity, bedrock, drainage_area):
+    def get_mrf_water_balance(self, method):
         """
         """
-        _waterbal.get_mrf_water_balance(self, method, porosity, bedrock, drainage_area)
+        # need to get catchment averaged porosity, bedrock, drainage_area
+
+        # drainage area from max CAr or watershed outline
+
+        _waterbalance.get_mrf_water_balance(self, method, porosity, bedrock, drainage_area)
 
     def get_element_water_balance(self, method, node_file=None):
         """
@@ -133,6 +200,4 @@ class Results:
         node/key. The user can specify a method for calculating the time frames over which the water balance is
         calculated.
         """
-        _waterbal.get_element_water_balance(self, method, node_file)
-
-
+        _waterbalance.get_element_water_balance(self, method, node_file)

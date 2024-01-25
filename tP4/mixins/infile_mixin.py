@@ -1,15 +1,20 @@
-def create_input_file():
+class InfileMixin:
     """
-    Creates a dictionary with tRIBS input options assigne to attribute input_options.
+    Mixin for .in file parameters and definitions shared by both tP4 Classes Model & Results.
+    """
+    @staticmethod
+    def create_input_file():
+        """
+        Creates a dictionary with tRIBS input options assigne to attribute input_options.
 
-    This function loads a dictionary of the necessary variables for a tRIBS input file. And is called upon
-    initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
-    the templateVars file will need to be udpated if additional keywords are added to the .in file.
+        This function loads a dictionary of the necessary variables for a tRIBS input file. And is called upon
+        initialization. The dictionary is assigned as instance variable:input_options to the Class Simulation. Note
+        the templateVars file will need to be udpated if additional keywords are added to the .in file.
 
-    Each subdictionary has a tags key. With the tag indicating the role of the given option or variable in the model
-    simulation.
+        Each subdictionary has a tags key. With the tag indicating the role of the given option or variable in the model
+        simulation.
 
-    Tags:
+        Tags:
         time    - set parameters related to model simulation times and time steps
         opts    - enable diffrent model options, modules, and functions
         physical    - set physical parameters
@@ -17,8 +22,8 @@ def create_input_file():
         restart    - suite of options and variables related to tRIBS restart feature
         parallel    - suite of options and variables related to tRIBS parallelization
         deprecated    - deprecated or untested options
-    """
-    input_file = {
+        """
+        input_file = {
         "startdate": {"key_word": "STARTDATE:", "describe": "Starting time (MM/DD/YYYY/HH/MM)", "value": None,
                       "tags": ["time"]},
         "runtime": {"key_word": "RUNTIME:", "describe": "simulation length in hours", "value": None,
@@ -294,6 +299,6 @@ def create_input_file():
         "chanporeindex": {"key_word": "CHANPOREINDEX:", "describe": "Needs to be updated", "value": 0,
                           "tags": ["physical"]},
         "chanpsib": {"key_word": "CHANPSIB:", "describe": "Needs to be updated", "value": 0, "tags": ["physical"]}
-    }
+        }
 
-    return input_file
+        return input_file

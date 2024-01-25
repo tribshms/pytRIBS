@@ -1,12 +1,12 @@
-import tP4.model._infile as _infile
+
+from tP4.mixins.infile_mixin import InfileMixin
+from tP4.mixins.shared_mixin import SharedMixin
 import tP4.model._aux as _aux
 import tP4.model._diagnose as _diagnose
-import tP4.model._post as _post
 import tP4.model._inout as _inout
-from tP4.results.results import Results
 
 
-class Model(object):
+class Model(InfileMixin, SharedMixin):
     """
     A tRIBS Model class.
 
@@ -41,21 +41,14 @@ class Model(object):
             :return: List of nodes specified by .dat file
             :rtype: list
 
-        def convert_to_datetime(starting_date):
-            Returns a pandas date-time object.
-            :param starting_date: The start date of a given model simulation, note needs to be in tRIBS format.
-            :type starting_date: str
-            :return: A pandas Timestamp object.
 
     """
 
     def __init__(self):
         # attributes
-        self.options = _infile.create_input_file()  # input options for tRIBS model run
-        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}  # Geographic properties of tRIBS model domain.
-
-        # nested classes
-        self.Results = Results(self)
+        self.options = self.create_input_file()  # input options for tRIBS model run
+        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.area = None
 
     # SIMULATION METHODS
     def __getattr__(self, name):
@@ -80,14 +73,6 @@ class Model(object):
     ########################################
     # INPUT/OUTPUT
     ########################################
-
-    # Input File
-    def read_input_file(self, file_path):
-        """
-        Reads .in file for tRIBS model simulation and assigns values to options attribute.
-        :param file_path: Path to .in file.
-        """
-        _inout.read_input_file(self, file_path)
 
     def write_input_file(self, output_file_path):
         """
@@ -205,74 +190,8 @@ class Model(object):
         _inout.write_ascii(raster_dict, output_file_path)
 
     ########################################
-    # POST-RUN PROCESSING
-    ########################################
-
-    def read_voi_file(self, filename=None):
-        """
-        Returns GeoDataFrame containing voronoi polygons from tRIBS model domain.
-        :param filename: Set to read _reach file specified from OUTFILENAME,but can be changed.
-        :return: GeoDataFrame
-        """
-        gdf = _post.read_voi_file(self, filename)
-
-        return gdf
-
-    def read_reach_file(self, filename=None):
-        """
-        Returns GeoDataFrame containing reaches from tRIBS model domain.
-        :param filename: Set to read _reach file specified from OUTFILENAME,but can be changed.
-        :return: GeoDataFrame
-        """
-        gdf = _post.read_reach_file(self, filename)
-        return gdf
-
-    def merge_parallel_voi(self, join=None, result_path=None, format=None, save=False):
-        """
-        Returns geodataframe of merged vornoi polygons from parallel tRIBS model run.
-
-        :param join: Data frame of dynamic or integrated tRIBS model output (optional).
-        :param save: Set to True to save geodataframe (optional, default True).
-        :param result_path: Path to save geodateframe (optional, default OUTFILENAME).
-        :param format: Driver options for writing geodateframe (optional, default = ESRI Shapefile)
-
-        :return: GeoDataFrame
-        """
-
-        gdf = _post.merge_parllel_voi(self, join, result_path, format, save)
-
-        return gdf
-
-    def merge_parallel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None,
-                                     single=True):
-        """
-        Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
-        :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
-        :param int dtime : Option to specify time step at which to start merge of files.
-        :param bool write: Option to write dataframes to file.
-        :param bool header: Set to False if headers are not provided with spatial files.
-        :param bool colnames: If header = False, column names can be provided for the dataframe--but it is expected the first column is ID.
-        :param bool single: If single = True then only spatial files specified at dtime are merged.
-        :return: Dictionary of pandas dataframes.
-        """
-        _dict = _post.merge_parllel_spatial_files(self, suffix, dtime, write, header, colnames,
-                                                  single)
-        return _dict
-
-    ########################################
     # AUXILIARY METHODS
     ########################################
-    @staticmethod
-    def convert_to_datetime(starting_date):
-        """
-        Returns a pandas date-time object.
-
-        :param starting_date: The start date of a given model simulation, note needs to be in tRIBS format.
-        :type starting_date: str
-        :rtupe: A pandas Timestamp object
-        """
-        date = _aux.convert_to_datetime(starting_date)
-        return date
 
     def print_tags(self, tag_name):
         """

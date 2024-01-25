@@ -80,32 +80,6 @@ def read_node_list(file_path):
         return []
 
 
-def read_input_file(instance, file_path):
-    """
-    Reads .in file for tRIBS model simulation and assigns values to options attribute.
-    :param file_path: Path to .in file.
-
-    """
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()  # Remove leading/trailing whitespace
-        for key in instance.options.keys():
-            # Convert key to lowercase for case-insensitive comparison
-            key_lower = key.lower()
-            # Convert line to lowercase for case-insensitive comparison
-            line_lower = line.lower()
-            if line_lower.startswith(key_lower):
-                # Extract the portion of the line after the key
-                if i + 1 < len(lines):
-                    # Extract the value from the next line
-                    value = lines[i + 1].strip()
-                    instance.options[key]['value'] = value
-        i += 1
-
-
 def write_input_file(instance, output_file_path):
     """
     Writes .in file for tRIBS model simulation.
