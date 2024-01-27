@@ -45,7 +45,6 @@ class Results(InfileMixin, SharedMixin):
                                                                       dtime=int(self.options['runtime']['value']))
         elif parallel_flag == 0:
             runtime = int(self.options["runtime"]["value"])
-
             outfilename = self.options["outfilename"]["value"]
             intfile = f"{outfilename}.{runtime}_00i"
 
@@ -192,7 +191,7 @@ class Results(InfileMixin, SharedMixin):
 
         # drainage area from max CAr or watershed outline
 
-        _waterbalance.get_mrf_water_balance(self, method, porosity, bedrock, drainage_area)
+        _waterbalance.get_mrf_water_balance(self, method)
 
     def get_element_water_balance(self, method, node_file=None):
         """

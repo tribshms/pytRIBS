@@ -1,5 +1,7 @@
 # shared_mixin.py
 import os
+import glob
+import numpy as np
 
 import geopandas as gpd
 import pandas as pd
@@ -297,3 +299,121 @@ class SharedMixin:
                 break
 
         return dyn_data
+
+    def mesh2vtk(self,outfile):
+        """
+
+        :return:
+        """
+        outfilename = self.options["outfilename"]["value"]
+        last_slash_index = outfilename.rfind('/')
+        directory_path = outfilename[:last_slash_index + 1]
+
+        if os.path.exists(directory_path):
+            node_file = glob.glob(directory_path + '*.nodes*')
+        else:
+            print(f'Cannot find node file at: {directory_path}. Exiting.')
+            return
+
+        if os.path.exists(directory_path):
+            tri_file = glob.glob(directory_path + '*.tri*')
+        else:
+            print(f'Cannot find tri file at: {directory_path}. Exiting.')
+            return
+
+        if os.path.exists(directory_path):
+            z_file = glob.glob(directory_path + '*.z*')
+        else:
+            print(f'Cannot find z file at: {directory_path}. Exiting.')
+            return
+
+        # read in node,tri,z files:
+        try:
+
+            with open(node_file[0], 'r') as f:
+                lines = f.readlines() #skip first since it's relic feature
+
+                # Check if there's at least one line
+                if lines:
+                    num_nodes = int(lines[1])
+                    store_nodes = np.zeros((num_nodes, 2))
+                    boundary_code = np.zeros((num_nodes,1))
+
+                    # Iterate from the second line onward
+                    for l in range(2, num_nodes + 2):
+                        line = lines[l].split()
+                        store_nodes[l - 2, 0] = float(line[0])
+                        store_nodes[l - 2, 1] = float(line[1])
+                        boundary_code[l-2,0] = float(line[3])
+
+            with open(tri_file[0], 'r') as f:
+                lines = f.readlines()
+
+                # Check if there's at least one line
+                if lines:
+                    num_tri = int(lines[1])
+                    store_tri = np.zeros((num_tri, 3))
+
+                    # Iterate from the second line onward
+                    for l in range(2, num_tri + 2):
+                        line = lines[l].split()
+                        store_tri[l - 2, 0] = float(line[0])
+                        store_tri[l - 2, 1] = float(line[1])
+                        store_tri[l - 2, 2] = float(line[2])
+
+            with open(z_file[0], 'r') as f:
+                lines = f.readlines()
+
+                # Check if there's at least one line
+                if lines:
+                    num_z = int(lines[1])
+                    store_z = np.zeros((num_z, 1))
+
+                    # Iterate from the second line onward
+                    for l in range(2, num_z + 2):
+                        line = lines[l].split()
+                        store_z[l - 2, 0] = float(line[0])
+
+            with open(outfile, 'w') as f:
+                f.write("# vtk DataFile Version 3.0\n")
+                f.write("tRIBS\n")
+                f.write("ASCII\n")
+                f.write("DATASET UNSTRUCTURED_GRID\n")
+                f.write('POINTS {0:10d} float\n'.format(num_nodes))
+                for I in range(num_nodes):
+                    f.write("{0:15.5f} {1:15.5f} {2:15.5f}\n".format(store_nodes[I, 0], store_nodes[I, 1], store_z[I, 0]))
+
+                f.write("CELLS {0:10d} {1:10d}\n".format(num_tri, 4*num_tri))
+                for I in range(num_tri):
+                    f.write('3 {0:10d} {1:10d} {2:10d}\n'.format(int(store_tri[I, 0]) , int(store_tri[I, 1]), int(store_tri[I, 2]) ))
+
+                f.write("CELL_TYPES {0:10d}\n".format(num_tri))
+                for I in range(num_tri):
+                    f.write("5\n")
+
+                f.write("POINT_DATA {0:10d}\n".format(num_nodes))
+                f.write("SCALARS Altitude float 1\n")
+                f.write("LOOKUP_TABLE default\n")
+                for I in range(num_nodes):
+                    if boundary_code[I,0] == 1:
+                        f.write('NaN'+'\n')
+                    else:
+                        f.write(str(store_z[I, 0]) + "\n")
+
+                f.write('SCALARS BC_code float 1\n')
+                f.write('LOOKUP_TABLE BC_LUT\n')
+
+                for I in range(num_nodes):
+                    f.write(str(float(boundary_code[I,0]))+'\n')
+
+                # possible to add additional scalars
+                # f.write("SCALARS Shear_stress float 1\n")
+                # f.write("LOOKUP_TABLE default\n")
+                # for I in range(num_nodes):
+                #     f.write(str(TABTAU[I, 0]) + "\n")
+
+        except FileNotFoundError:
+            return
+
+
+

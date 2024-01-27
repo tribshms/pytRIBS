@@ -3,11 +3,11 @@ import pandas as pd
 from matplotlib import pyplot as plt
 
 
-def get_mrf_water_balance(instance, method, porosity, bedrock):
+def get_mrf_water_balance(instance, method):
     """
     """
     # make sure watershed_stats dictionary has been updated.
-    watershed_stats_tf = [x is None for _, x in instance.watershed_stats]
+    watershed_stats_tf = [x is None for x in instance.watershed_stats.values()]
 
     if any(watershed_stats_tf):
         print("Watershed Stats Are Incomplete: see attribute watershed_stats")
@@ -15,9 +15,11 @@ def get_mrf_water_balance(instance, method, porosity, bedrock):
     else:
         drainage_area = instance.watershed_stats['area']
         bedrock = instance.watershed_stats['avg_bedrock_depth']
-        porosity = instance.watershed_stats['porosity']
+        porosity = instance.watershed_stats['avg_porosity']
 
-    waterbalance = _run_mrf_water_balance(instance.mrf, porosity, bedrock, drainage_area, method)
+    mrf = instance.mrf
+
+    waterbalance = _run_mrf_water_balance(mrf, porosity, bedrock, drainage_area, method)
     var = {"mrf": instance.mrf, "waterbalance": waterbalance}
     instance.mrf = var
 
@@ -132,7 +134,7 @@ def element_wb_components(element_data_frame, begin, end, porosity, element_area
     return waterbalance
 
 
-def _run_mrf_water_balance(instance, data, porosity, bedrock, drainage_area, method):
+def _run_mrf_water_balance(data, porosity, bedrock, drainage_area, method):
     """
 
     :param data:
@@ -140,19 +142,26 @@ def _run_mrf_water_balance(instance, data, porosity, bedrock, drainage_area, met
     :param method:
     :return: pandas data frame with waterbalance information
     """
+    global waterbalance
 
-    begin, end, timeframe = instance.water_balance_dates(data.Time, method)
+    if method == 'full':
+        min_date = min(data.Time)
+        max_date = max(data.Time)
+        waterbalance = _mrf_wb_components(data, min_date, max_date, porosity, bedrock, drainage_area)
+        timeframe = data.Time.mean()
+    else:
+        begin, end, timeframe = _water_balance_dates(data.Time, method)
 
-    for n in range(0, len(timeframe)):
-        if n == 0:
-            waterbalance = instance.mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
-        else:
-            temp = instance.mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
+        for n in range(0, len(timeframe)):
+            if n == 0:
+                waterbalance = _mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
+            else:
+                temp = _mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
 
-            for key, val in temp.items():
+                for key, val in temp.items():
 
-                if key in waterbalance:
-                    waterbalance[key] = np.append(waterbalance[key], val)
+                    if key in waterbalance:
+                        waterbalance[key] = np.append(waterbalance[key], val)
 
     waterbalance.update({"Time": timeframe})
     # change in storage
@@ -168,7 +177,7 @@ def _run_mrf_water_balance(instance, data, porosity, bedrock, drainage_area, met
 
 
 @staticmethod
-def mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth, drainage_area):
+def _mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth, drainage_area):
     """
     Computes water balance calculations for an individual computational mrf or node over a specified time frame. Data = pandas data
     frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
@@ -260,7 +269,7 @@ def plot_water_balance(waterbalance, saved_fig=None):
 
 
 @staticmethod
-def water_balance_dates(time_vector, method):
+def _water_balance_dates(time_vector, method):
     """
     Returns three vectors of time objects for specified time intrevals: beginning dates, ending dates,
     and years.
