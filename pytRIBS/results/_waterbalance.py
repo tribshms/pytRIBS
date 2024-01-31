@@ -6,21 +6,17 @@ from matplotlib import pyplot as plt
 def get_mrf_water_balance(instance, method):
     """
     """
-    # make sure watershed_stats dictionary has been updated.
-    watershed_stats_tf = [x is None for x in instance.watershed_stats.values()]
 
-    if any(watershed_stats_tf):
-        print("Watershed Stats Are Incomplete: see attribute watershed_stats")
-        return None
-    else:
-        drainage_area = instance.watershed_stats['area']
-        bedrock = instance.watershed_stats['avg_bedrock_depth']
-        porosity = instance.watershed_stats['avg_porosity']
-
+    drainage_area = instance.watershed_stats['area'] = instance.voronoi['geometry'].area.sum()
+    porosity = instance.int_spatial_vars['Bedrock_Depth_mm'].mean()
     mrf = instance.mrf
 
-    waterbalance = _run_mrf_water_balance(mrf, porosity, bedrock, drainage_area, method)
-    var = {"mrf": instance.mrf, "waterbalance": waterbalance}
+    if any([drainage_area, porosity, mrf]) is None:
+        print('Drainage Area, Porosity, or MRF file is None.\n Unable to calculate water balance from MRF File.')
+        return
+
+    waterbalance = _run_mrf_water_balance(mrf, porosity, drainage_area, method)
+    var = {"mrf": mrf, "waterbalance": waterbalance}
     instance.mrf = var
 
 
@@ -134,7 +130,7 @@ def element_wb_components(element_data_frame, begin, end, porosity, element_area
     return waterbalance
 
 
-def _run_mrf_water_balance(data, porosity, bedrock, drainage_area, method):
+def _run_mrf_water_balance(data, porosity, drainage_area, method):
     """
 
     :param data:
@@ -154,9 +150,9 @@ def _run_mrf_water_balance(data, porosity, bedrock, drainage_area, method):
 
         for n in range(0, len(timeframe)):
             if n == 0:
-                waterbalance = _mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
+                waterbalance = _mrf_wb_components(data, begin[n], end[n], porosity, drainage_area)
             else:
-                temp = _mrf_wb_components(data, begin[n], end[n], porosity, bedrock, drainage_area)
+                temp = _mrf_wb_components(data, begin[n], end[n], porosity, drainage_area)
 
                 for key, val in temp.items():
 
@@ -177,7 +173,7 @@ def _run_mrf_water_balance(data, porosity, bedrock, drainage_area, method):
 
 
 @staticmethod
-def _mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth, drainage_area):
+def _mrf_wb_components(mrf_data_frame, begin, end, porosity, drainage_area):
     """
     Computes water balance calculations for an individual computational mrf or node over a specified time frame. Data = pandas data
     frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
@@ -200,11 +196,9 @@ def _mrf_wb_components(mrf_data_frame, begin, end, porosity, bedrock_depth, drai
     evapotrans = mrf_data_frame.MET - 10 * (
             mrf_data_frame.AvSnSub + mrf_data_frame.AvSnEvap + mrf_data_frame.AvInSu)
     unsaturated = mrf_data_frame.MSMU.values * porosity * mrf_data_frame.MDGW.values
-    saturated = (bedrock_depth - mrf_data_frame.MDGW.values) * porosity
-
     # calculate individual water balance components
     waterbalance.update(
-        {'dSat': saturated[end_id] - saturated[begin_id]})  # [0] converts from array to float
+        {'dSat': (mrf_data_frame.MDGW.values[begin_id] - mrf_data_frame.MDGW.values[end_id]) * porosity})
     waterbalance.update(
         {'dUnsat': (unsaturated[begin_id] - unsaturated[end_id])})
     waterbalance.update({'dCanopySWE': (10 * (

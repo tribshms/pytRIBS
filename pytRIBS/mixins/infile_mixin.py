@@ -1,6 +1,6 @@
 class InfileMixin:
     """
-    Mixin for .in file parameters and definitions shared by both tP4 Classes Model & Results.
+    Mixin for .in file parameters and definitions shared by both pytRIBS Classes Model & Results.
     """
     @staticmethod
     def create_input_file():

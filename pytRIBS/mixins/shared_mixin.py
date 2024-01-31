@@ -12,7 +12,7 @@ from shapely.geometry import Polygon
 
 class SharedMixin:
     """
-    Shared methods betweens the tP4 Classes Model & Results.
+    Shared methods betweens the pytRIBS Classes Model & Results.
     """
 
     def read_input_file(self, file_path):

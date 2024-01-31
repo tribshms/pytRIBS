@@ -1,9 +1,9 @@
 
-from tP4.mixins.infile_mixin import InfileMixin
-from tP4.mixins.shared_mixin import SharedMixin
-import tP4.model._aux as _aux
-import tP4.model._diagnose as _diagnose
-import tP4.model._inout as _inout
+from pytRIBS.mixins.infile_mixin import InfileMixin
+from pytRIBS.mixins.shared_mixin import SharedMixin
+import pytRIBS.model._aux as _aux
+import pytRIBS.model._diagnose as _diagnose
+import pytRIBS.model._inout as _inout
 
 
 class Model(InfileMixin, SharedMixin):

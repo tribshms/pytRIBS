@@ -4,10 +4,10 @@ import re
 
 import pandas as pd
 
-import tP4.results._post as _post
-import tP4.results._waterbalance as _waterbalance
-from tP4.mixins.infile_mixin import InfileMixin
-from tP4.mixins.shared_mixin import SharedMixin
+import pytRIBS.results._post as _post
+import pytRIBS.results._waterbalance as _waterbalance
+from pytRIBS.mixins.infile_mixin import InfileMixin
+from pytRIBS.mixins.shared_mixin import SharedMixin
 
 
 class Results(InfileMixin, SharedMixin):
@@ -65,9 +65,6 @@ class Results(InfileMixin, SharedMixin):
             print('Unable To Load Voi File(s).')
             self.voronoi = None
 
-        self.watershed_stats = {"area": None, "avg_porosity": None, "avg_bedrock_depth": None}
-        self.get_watershed_stats()
-
         #
         # # SIMULATION METHODS
         # def __getattr__(self, name):
@@ -80,15 +77,7 @@ class Results(InfileMixin, SharedMixin):
         #     return list(
         #         set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
 
-    def get_watershed_stats(self):
-        # drainage area
-        self.watershed_stats['area'] = self.voronoi['geometry'].area.sum()
 
-        # average porosity
-        self.watershed_stats['avg_porosity'] = self.int_spatial_vars['Porosity'].mean()
-
-        # average bedrock depth
-        self.watershed_stats['avg_bedrock_depth'] = self.int_spatial_vars['Bedrock_Depth_mm'].mean()
 
     def get_mrf_results(self, mrf_file=None):
         """
