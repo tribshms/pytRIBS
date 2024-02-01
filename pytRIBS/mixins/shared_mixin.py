@@ -132,6 +132,46 @@ class SharedMixin:
             print("Voi file not found.")
             return None
 
+    @staticmethod
+    def read_node_list(file_path):
+        """
+        Returns node list provide by .dat file.
+
+        The node list can be further modified or used for reading in element/pixel files and subsequent processing.
+
+        :param file_path: Relative or absolute file path to .dat file.
+        :type file_path: str
+        :return: List of nodes specified by .dat file
+        :rtype: list
+
+        """
+        try:
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+
+            # Initialize an empty list to store the IDs
+            node_ids = []
+
+            # Check if the file is empty or has invalid content
+            if not lines:
+                return node_ids
+
+            # Parse the first column as the size of the array
+            size = int(lines[0].strip())
+
+            # Extract IDs from the remaining lines
+            for line in lines[1:]:
+                id_value = line.strip()
+                node_ids.append(id_value)
+
+            # Ensure the array has the specified size
+            if len(node_ids) != size:
+                print("Warning: Array size does not match the specified size in the file.")
+
+            return node_ids
+        except FileNotFoundError:
+            print(f"Error: File '{file_path}' not found.")
+            return []
     def read_reach_file(self, filename=None):
         """
         Returns GeoDataFrame containing reaches from tRIBS model domain.

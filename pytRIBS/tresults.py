@@ -2,7 +2,9 @@ import glob
 import os
 import re
 
+import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 import pytRIBS.results._post as _post
 import pytRIBS.results._waterbalance as _waterbalance
@@ -50,6 +52,9 @@ class Results(InfileMixin, SharedMixin):
 
             self.int_spatial_vars = pd.read_csv(intfile)
 
+            # Note one could use max CAr, but it overestimates area according to Voi geomerty
+            self.int_spatial_vars['weight'] = self.int_spatial_vars.VAr.values/self.int_spatial_vars.VAr.sum()
+
         else:
             print('Unable To Read Integrated Spatial File (*_00i).')
             self.voronoi = None
@@ -60,7 +65,6 @@ class Results(InfileMixin, SharedMixin):
 
         elif parallel_flag == 0:
             self.voronoi, _ = self.read_voi_file()
-
         else:
             print('Unable To Load Voi File(s).')
             self.voronoi = None
@@ -106,8 +110,7 @@ class Results(InfileMixin, SharedMixin):
         dt = pd.to_timedelta(results_data_frame['Time'], unit='h')
         results_data_frame['Time'] = [date + step for step in dt]
 
-        self.mrf = results_data_frame
-        return units
+        self.mrf['mrf'] = results_data_frame
 
     def get_element_results(self):
         """
@@ -129,13 +132,6 @@ class Results(InfileMixin, SharedMixin):
 
         # Truncate the string at the last occurrence of '/'
         directory_path = directory_path[:last_slash_index + 1]
-        # read in .ivpixel if it exists
-        try:
-            invar_path = self.options["outfilename"]["value"] + ".ivpixel"
-            invar_data_frame = pd.read_csv(invar_path, sep=r"\s+", header=0)
-            self.element = {"invar": invar_data_frame}
-        except FileNotFoundError:
-            print("Invariant pixel files not found. Continuing to read in .pixel files")
 
         # Search for files matching the pattern
         if os.path.exists(directory_path):
@@ -156,7 +152,7 @@ class Results(InfileMixin, SharedMixin):
                 print(f"Reading in: {file}")
                 first_integer = int(match.group(1))
                 node_id.append(first_integer)
-                self.element.update({first_integer: self.read_element_files(file_name)})
+                self.element.update({first_integer: {'pixel':self.read_element_files(file_name),'waterbalance': None}})
 
     def read_element_files(self, element_results_file):
         """
@@ -182,10 +178,105 @@ class Results(InfileMixin, SharedMixin):
 
         _waterbalance.get_mrf_water_balance(self, method)
 
-    def get_element_water_balance(self, method, node_file=None):
+    def get_element_water_balance(self, method):
         """
         This function loops through element_results and assigns water_balance as second item in the list for a given
         node/key. The user can specify a method for calculating the time frames over which the water balance is
         calculated.
         """
-        _waterbalance.get_element_water_balance(self, method, node_file)
+        _waterbalance.get_element_water_balance(self, method)
+
+    @staticmethod
+    def plot_water_balance(waterbalance, saved_fig=None):
+        """
+
+        :param saved_fig:
+       :param waterbalance:
+       :return:
+       """
+
+        # plt.style.use('bmh')
+        barwidth = 0.25
+        fig, ax = plt.subplots()
+
+        ax.bar(np.arange(len(waterbalance)) + barwidth, waterbalance['nP'], align='center', width=barwidth,
+               color='grey', label='nP')
+        rects = ax.patches
+
+        # Make some labels.
+        labels = ["%.0f" % (p - waterbalance) for p, waterbalance in
+                  zip(waterbalance['nP'], waterbalance['dS'] + waterbalance['nQ'] + waterbalance['nET'])]
+        netdiff = [p - waterbalance for p, waterbalance in
+                   zip(waterbalance['nP'], waterbalance['dS'] + waterbalance['nQ'] + waterbalance['nET'])]
+
+        for rect, label in zip(rects, labels):
+            height = rect.get_height()
+            ax.text(
+                rect.get_x() + rect.get_width() / 2, height + 5, label, ha="center", va="bottom"
+            )
+
+        ax.text(len(waterbalance.index), max(waterbalance.nP), "mean difference: " + "%.0f" % np.mean(netdiff))
+
+        waterbalance.plot.bar(ax=ax, y=["nQ", "nET", "dS"], stacked=True, width=barwidth,
+                              color=['tab:blue', 'tab:red', 'tab:cyan'])
+        ax.legend(bbox_to_anchor=(1.35, 0.85), loc='center right',
+                  labels=["Precip.", "Runoff", "Evapo. Trans.", "$\Delta$ Storage"])
+        ax.set_ylabel("Water Flux & $\Delta$ Storage (mm)")
+        ax.set_xticks(range(len(waterbalance.index)), waterbalance.index.strftime("%Y-%m"), rotation=45)
+        fig.autofmt_xdate()
+        plt.show()
+
+        if saved_fig is not None:
+            plt.savefig(saved_fig, bbox_inches='tight')
+
+        return fig, ax
+
+    def get_element_wb_dataframe(self, element_id):
+        
+        pixel = self.element[element_id]
+        if isinstance(pixel,dict):
+            pixel = pixel['pixel'] # waterbalance calc already called
+        
+        porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'Porosity'].values[0]
+        element_area = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'VAr'].values[0]
+        
+        
+        df = pd.DataFrame({
+            'Time': pixel['Time'],
+            'Unsat_mm': pixel['Mu_mm'].values,
+            'Sat_mm': pixel['Nwt_mm'].values * porosity,
+            'CanopySWE_mm': 10 * pixel['IntSWEq_cm'].values,
+            'SWE_mm': 10 * pixel['SnWE_cm'].values,
+            'Canop_mm': pixel['CanStorage_mm'],
+            'P_mm_h': pixel['Rain_mm_h'],
+            'ET_mm_h': pixel['EvpTtrs_mm_h'] - (
+                        pixel['SnSub_cm'] * 10 + pixel['SnEvap_cm'] * 10 + pixel['IntSub_cm'] * 10),
+            'Qsurf_mm_h': pixel['Srf_Hour_mm'],
+            'Qunsat_mm_h': pixel['QpIn_mm_h'] - pixel['QpOut_mm_h'],
+            'Qsat_mm_h': pixel['GWflx_m3_h'] / element_area * 1000
+        })
+
+        return df
+
+    def get_mrf_wb_dataframe(self):
+        drainage_area = self.int_spatial_vars['VAr'].sum()  ## in m, TODO investigate why sum 'VAr' != max CAr ?
+        weights = self.int_spatial_vars['VAr'].values / drainage_area
+        porosity = np.sum(self.int_spatial_vars['Porosity'].values * weights)
+
+        mrf = self.mrf['mrf']
+
+        df = pd.DataFrame({
+            'Time': mrf['Time'],
+            'Unsat_mm': mrf['MSMU'].values * mrf['MDGW'].values * porosity,
+            'Sat_mm': mrf['MDGW'] * porosity,
+            'CanopySWE_mm': 10 * mrf['AvInSn'].values,
+            'SWE_mm': 10 * mrf['AvSWE'].values,
+            'Canop_mm': 0,  # not average canopy  storage
+            'P_mm_h': mrf['MAP'],
+            'ET_mm_h': mrf['MET'] - (mrf['AvSnSub'] * 10 + mrf['AvSnEvap'] * 10 + mrf['AvInSu'] * 10),
+            'Qsurf_mm_h': mrf['Srf'] * 3600 * 1000 / drainage_area,
+            'Qunsat_mm_h': 0,  # assumed zero, but not sure if correct?
+            'Qsat_mm_h': 0  # assumed zero, but not sure if correct?
+        })
+
+        return df
