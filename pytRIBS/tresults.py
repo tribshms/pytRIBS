@@ -119,9 +119,6 @@ class Results(InfileMixin, SharedMixin):
         and for nodes is simply the node ID. For each node this function reads in element file and create data frame
         of results and is assigned to the aforementioned dictionary. TODO:
         """
-
-        pattern = r'(\D+)(\d+)\.pixel(?:\.(\d+))?\.?$'
-
         # List to store first integers
         node_id = []
 

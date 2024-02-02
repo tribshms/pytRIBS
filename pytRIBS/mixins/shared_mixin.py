@@ -278,6 +278,7 @@ class SharedMixin:
         :param bool colnames: If header = False, column names can be provided for the dataframe--but it is expected the first column is ID.
         :param bool single: If single = True then only spatial files specified at dtime are merged.
         :return: Dictionary of pandas dataframes.
+        # TODO add a clean option to store .0 t0 .n files, then zip, probably would only want this if you are saving them out.
         """
 
         runtime = int(self.options["runtime"]["value"])
