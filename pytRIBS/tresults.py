@@ -6,13 +6,12 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-import pytRIBS.results._post as _post
-import pytRIBS.results._waterbalance as _waterbalance
 from pytRIBS.mixins.infile_mixin import InfileMixin
 from pytRIBS.mixins.shared_mixin import SharedMixin
+from pytRIBS.results.waterbalance import WaterBalance
 
 
-class Results(InfileMixin, SharedMixin):
+class Results(InfileMixin, SharedMixin, WaterBalance):
     """
     A tRIBS Results Class.
 
@@ -26,10 +25,9 @@ class Results(InfileMixin, SharedMixin):
 
     Example:
         Provide an example of how to create and use an instance of this class
-
     """
 
-    def __init__(self, input_file, EPSG = None, UTM_Zone = None):
+    def __init__(self, input_file, EPSG=None, UTM_Zone=None):
         # setup model paths and options for Result Class
         self.options = self.create_input_file()  # input options for tRIBS model run
         self.read_input_file(input_file)
@@ -37,7 +35,8 @@ class Results(InfileMixin, SharedMixin):
         # attributes for analysis, plotting, and archiving model results
         self.element = {}
         self.mrf = {'mrf': None, 'waterbalance': None}
-        self.geo = {"UTM_Zone": UTM_Zone, "EPSG": EPSG, "Projection": None}  # Geographic properties of tRIBS model domain.
+        self.geo = {"UTM_Zone": UTM_Zone, "EPSG": EPSG,
+                    "Projection": None}  # Geographic properties of tRIBS model domain.
 
         parallel_flag = int(self.options["parallelmode"]['value'])
 
@@ -53,7 +52,7 @@ class Results(InfileMixin, SharedMixin):
             self.int_spatial_vars = pd.read_csv(intfile)
 
             # Note one could use max CAr, but it overestimates area according to Voi geomerty
-            self.int_spatial_vars['weight'] = self.int_spatial_vars.VAr.values/self.int_spatial_vars.VAr.sum()
+            self.int_spatial_vars['weight'] = self.int_spatial_vars.VAr.values / self.int_spatial_vars.VAr.sum()
 
         else:
             print('Unable To Read Integrated Spatial File (*_00i).')
@@ -68,20 +67,6 @@ class Results(InfileMixin, SharedMixin):
         else:
             print('Unable To Load Voi File(s).')
             self.voronoi = None
-
-        #
-        # # SIMULATION METHODS
-        # def __getattr__(self, name):
-        #     if name in self.options:
-        #         return self.options[name]
-        #     raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-        #
-        # def __dir__(self):
-        #     # Include the keys from the options dictionary and the methods of the class
-        #     return list(
-        #         set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
-
-
 
     def get_mrf_results(self, mrf_file=None):
         """
@@ -149,7 +134,8 @@ class Results(InfileMixin, SharedMixin):
                 print(f"Reading in: {file}")
                 first_integer = int(match.group(1))
                 node_id.append(first_integer)
-                self.element.update({first_integer: {'pixel':self.read_element_files(file_name),'waterbalance': None}})
+                self.element.update(
+                    {first_integer: {'pixel': self.read_element_files(file_name), 'waterbalance': None}})
 
     def read_element_files(self, element_results_file):
         """
@@ -165,23 +151,6 @@ class Results(InfileMixin, SharedMixin):
         results_data_frame['Time'] = [date + step for step in dt]
 
         return results_data_frame
-
-    def get_mrf_water_balance(self, method):
-        """
-        """
-        # need to get catchment averaged porosity, bedrock, drainage_area
-
-        # drainage area from max CAr or watershed outline
-
-        _waterbalance.get_mrf_water_balance(self, method)
-
-    def get_element_water_balance(self, method):
-        """
-        This function loops through element_results and assigns water_balance as second item in the list for a given
-        node/key. The user can specify a method for calculating the time frames over which the water balance is
-        calculated.
-        """
-        _waterbalance.get_element_water_balance(self, method)
 
     @staticmethod
     def plot_water_balance(waterbalance, saved_fig=None):
@@ -229,15 +198,14 @@ class Results(InfileMixin, SharedMixin):
         return fig, ax
 
     def get_element_wb_dataframe(self, element_id):
-        
+
         pixel = self.element[element_id]
-        if isinstance(pixel,dict):
-            pixel = pixel['pixel'] # waterbalance calc already called
-        
+        if isinstance(pixel, dict):
+            pixel = pixel['pixel']  # waterbalance calc already called
+
         porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'Porosity'].values[0]
         element_area = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'VAr'].values[0]
-        
-        
+
         df = pd.DataFrame({
             'Time': pixel['Time'],
             'Unsat_mm': pixel['Mu_mm'].values,
@@ -247,7 +215,7 @@ class Results(InfileMixin, SharedMixin):
             'Canop_mm': pixel['CanStorage_mm'],
             'P_mm_h': pixel['Rain_mm_h'],
             'ET_mm_h': pixel['EvpTtrs_mm_h'] - (
-                        pixel['SnSub_cm'] * 10 + pixel['SnEvap_cm'] * 10 + pixel['IntSub_cm'] * 10),
+                    pixel['SnSub_cm'] * 10 + pixel['SnEvap_cm'] * 10 + pixel['IntSub_cm'] * 10),
             'Qsurf_mm_h': pixel['Srf_Hour_mm'],
             'Qunsat_mm_h': pixel['QpIn_mm_h'] - pixel['QpOut_mm_h'],
             'Qsat_mm_h': pixel['GWflx_m3_h'] / element_area * 1000
