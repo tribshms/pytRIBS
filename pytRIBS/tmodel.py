@@ -61,16 +61,3 @@ class Model(InfileMixin, SharedMixin, Aux, InOut, Diagnostics):
         # Include the keys from the options dictionary and the methods of the class
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
-
-    ########################################
-    # PRE-RUN DIAGNOSTICS
-    ########################################
-    def check_paths(self):
-        """
-        Print input/output options where path does not exist and checks stations descriptor and grid data files.
-        """
-        _diagnose.check_paths(self)
-
-    ########################################
-    # INPUT/OUTPUT
-    ########################################

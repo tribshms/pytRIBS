@@ -200,6 +200,7 @@ class InOut:
             print("Error: Number of stations does not match the specified count.")
 
         return station_list
+
     @staticmethod
     def read_met_station(file_path):
         # TODO add var for specifying Station ID and doc
@@ -209,23 +210,199 @@ class InOut:
         df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
         df = df.drop(['year', 'month', 'day', 'hour'], axis=1)
         return df
+    @staticmethod
+    def write_met_station(df, output_file_path):
+        """
+        Converts a DataFrame with 'date' and 'PA','TD','RH','VP','XC','US','TA','TS','NR' columns to flat file format.
+        See tRIBS documentation for more details on weather station data structure (i.e. *mdf files).
+        :param df: Pandas DataFrame with 'date' and 'R' columns.
+        :param output_file_path: Output flat file path.
+        """
+        # Extract Y, M, D, and H from the 'date' column
+        df['Y'] = df['date'].dt.year
+        df['M'] = df['date'].dt.month
+        df['D'] = df['date'].dt.day
+        df['H'] = df['date'].dt.hour
 
-    def write_met_station(self):
-        # TODO
-        pass
+        # Reorder columns
+        df = df[['Y', 'M', 'D', 'H', 'PA','TD','RH','VP','XC','US','TA','TS','NR']]
+
+        # Write DataFrame to flat file
+        df.to_csv(output_file_path, sep=' ', index=False)
 
     @staticmethod
-    def read_soil_table(self):
-        pass
+    def write_met_sdf(output_file_path, station_list):
+        """
+        Writes a list of meterological stations to a flat file (i.e. *.sdf file).
+        :param station_list: List of dictionaries containing station information.
+        :param output_file_path: Output flat file path.
+        """
+        with open(output_file_path, 'w') as file:
+            # Write metadata line
+            metadata = f"{len(station_list)} {len(station_list[0])}\n"
+            file.write(metadata)
 
-    def write_soil_table(self):
-        pass
+            # Write station information
+            for station in station_list:
+                line = f"{station['station_id']} {station['file_path']} {station['lat_dd']} {station['y']} {station['long_dd']} {station['x']} " \
+                       f"{station['GMT']} {station['record_length']} {station['num_parameters']} {station['other']}\n"
+                file.write(line)
 
-    def read_landuse_table(self):
-        pass
 
-    def write_landuse_table(self):
-        pass
+    def read_soil_table(self, file_path=None):
+        """
+        Soil Reclassification Table Structure (*.sdt)
+        #Types #Params
+        ID Ks thetaS thetaR m PsiB f As Au n ks Cs
+        """
+        if file_path is None:
+            file_path = self.options["soiltablename"]["value"]
+
+            if file_path is None:
+                print(self.options["soiltablename"]["key_word"] + "is not specified.")
+                return None
+
+        soil_list = []
+
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        metadata = lines.pop(0)
+        num_types, num_params = map(int, metadata.strip().split())
+        param_standard = 12
+
+        if num_params != param_standard:
+            print(f"The number parameters in {file_path} do not conform with stand .sdt format.")
+            return
+
+        for l in lines:
+            soil_info = l.strip().split()
+
+            if len(soil_info) == param_standard:
+                _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s = soil_info
+                station = {
+                    "ID": _id,
+                    "Ks": float(ks),
+                    "thetaS": float(theta_s),
+                    "thetaR": float(theta_r),
+                    "m": float(m),
+                    "PsiB": float(psi_b),
+                    "f": float(f),
+                    "As": float(a_s),
+                    "Au": float(a_u),
+                    "n": float(n),
+                    "ks": float(_ks),
+                    "Cs": float(c_s)
+                }
+                soil_list.append(station)
+
+        if len(soil_list) != num_types:
+            print("Error: Number of soil types does not match the specified count.")
+
+        return soil_list
+    @staticmethod
+    def write_soil_table(soil_list,file_path):
+        """
+        Writes out Soil Reclassification Table(*.sdt) file with the following format:
+        #Types #Params
+        ID Ks thetaS thetaR m PsiB f As Au n ks Cs
+
+        :param soil_list: List of dictionaries containing soil information specified by .sdt structure above.
+        :param file_path: Path to save *.sdt file.
+        """
+        param_standard = 12
+
+        with open(file_path, 'w') as file:
+            # Write metadata line
+            metadata = f"{len(soil_list)} {param_standard}\n"
+            file.write(metadata)
+
+            # Write station information
+            for type in soil_list:
+                line = f"{type['ID']} {type['Ks']} {type['thetaS']} {type['thetaR']} {type['m']} {type['PsiB']} " \
+                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}"
+                file.write(line)
+
+    def read_landuse_table(self, file_path=None):
+        """
+        Returns list of dictionaries for each type of landuse specified in the .ldt file.
+
+        Land Use Reclassification Table Structure (*.ldt, see tRIBS documentation for more details)
+        #Types	#Params
+        ID	a	b1	 P	S	K	b2	Al	 h	Kt	Rs	V LAI theta*_s theta*_t
+
+        """
+        if file_path is None:
+            file_path = self.options["landtablename"]["value"]
+
+            if file_path is None:
+                print(self.options["landtablename"]["key_word"] + "is not specified.")
+                return
+
+        landuse_list = []
+
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        metadata = lines.pop(0)
+        num_types, num_params = map(int, metadata.strip().split())
+        param_standard = 15
+
+        if num_params != param_standard:
+            print(f"The number parameters in {file_path} do not conform with stand .sdt format.")
+            return
+
+        for l in lines:
+            land_info = l.strip().split()
+
+            if len(land_info) == param_standard:
+                _id, a, b_1, p, s, k, b_2, al, h, kt, rs, v, lai, tstar_s, tstar_t = land_info
+                station = {
+                    "ID": _id,
+                    "a": float(a),
+                    "b1": float(b_1),
+                    "P": float(p),
+                    "S": float(s),
+                    "K": float(k),
+                    "b2": float(b_2),
+                    "Al": float(al),
+                    "h": float(h),
+                    "Kt": float(kt),
+                    "Rs": float(rs),
+                    "V": float(v),
+                    "LAI": float(lai),
+                    "theta*_s": float(tstar_s),
+                    "theta*_t": float(tstar_t)
+                }
+                landuse_list.append(station)
+
+        if len(landuse_list) != num_types:
+            print("Error: Number of soil types does not match the specified count.")
+
+        return landuse_list
+    @staticmethod
+    def write_landuse_table(landuse_list,file_path):
+        """
+        Writes out Land Use Reclassification Table(*.ldt) file with the following format:
+        #Types	#Params
+        ID	a	b1	 P	S	K	b2	Al	 h	Kt	Rs	V LAI theta*_s theta*_t
+
+        :param landuse_list: List of dictionaries containing soil information specified by .ldt structure above.
+        :param file_path: Path to save *.sdt file.
+        """
+        param_standard = 15
+
+        with open(file_path, 'w') as file:
+            # Write metadata line
+            metadata = f"{len(landuse_list)} {param_standard}\n"
+            file.write(metadata)
+
+            # Write station information
+            for type in landuse_list:
+                line = f"{type['ID']} {type['a']} {type['b1']} {type['P']} {type['S']} {type['K']} " \
+                       f" {type['b2']} {type['Al']} {type['h']} {type['Kt']} {type['Rs']} {type['V']}" \
+                       f" {type['LAI']} {type['theta*_s']} {type['theta*_t']}"
+                file.write(line)
 
     def read_grid_data_file(self, grid_type):
         """
