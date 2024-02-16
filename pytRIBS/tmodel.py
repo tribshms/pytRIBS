@@ -2,12 +2,13 @@
 from pytRIBS.mixins.infile_mixin import InfileMixin
 from pytRIBS.mixins.shared_mixin import SharedMixin
 from pytRIBS.model.aux import Aux
-from pytRIBS.model.inout import InOut
+#from pytRIBS.model.inout import InOut
 from pytRIBS.model.diagnose import Diagnostics
+from pytRIBS.model.preprocess import Preprocess
 
 
 
-class Model(InfileMixin, SharedMixin, Aux, InOut, Diagnostics):
+class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
     """
     A tRIBS Model class.
 

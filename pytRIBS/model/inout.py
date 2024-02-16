@@ -5,6 +5,7 @@ import geopandas as gpd
 import pandas as pd
 import rasterio
 from shapely.geometry import Point
+import json
 
 
 class InOut:
@@ -233,7 +234,7 @@ class InOut:
     @staticmethod
     def write_met_sdf(output_file_path, station_list):
         """
-        Writes a list of meterological stations to a flat file (i.e. *.sdf file).
+        Writes a list of meteorological stations to a flat file (i.e. *.sdf file).
         :param station_list: List of dictionaries containing station information.
         :param output_file_path: Output flat file path.
         """
@@ -477,7 +478,7 @@ class InOut:
     def read_ascii(file_path):
         """
         Returns dictionary containing 'data', 'profile', and additional metadata.
-        :param file_path: Path to ASCII raster.
+        :param file_path: Path to ASCII (or other formats) raster.
         :return: Dict
         """
         raster = {}
@@ -503,6 +504,23 @@ class InOut:
         data = raster_dict['data']
         profile = raster_dict['profile']
 
+        # Check if the driver is set to 'AAIGrid' (ASCII format)
+        if 'driver' not in profile or profile['driver'] != 'AAIGrid':
+            # Update the profile for ASCII raster format
+            profile.update(
+                dtype='float32',  # or any other appropriate data type
+                count=1,
+                compress=None,
+                driver='AAIGrid',  # ASCII Grid format
+                nodata=-9999,  # or any other nodata value you want to use
+            )
+
         # Write the data and metadata to the ASCII raster file
         with rasterio.open(output_file_path, 'w', **profile) as dst:
             dst.write(data, 1)
+
+    @staticmethod
+    def read_config(file_path):
+        with open(file_path, 'r') as f:
+            config = json.load(f)
+        return config
