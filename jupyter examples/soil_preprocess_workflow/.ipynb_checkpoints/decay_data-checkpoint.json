@@ -1,0 +1,11 @@
+{
+  "grid_depth": [{"depth":25, "path":"data/0-5cm_processed/Ks.asc"},
+                {"depth":100, "path":"data/5-15cm_processed/Ks.asc"},
+                {"depth":225, "path":"data/15-30cm_processed/Ks.asc"},
+                {"depth":450, "path":"data/30-60cm_processed/Ks.asc"},
+                {"depth":800, "path":"data/60-100cm_processed/Ks.asc"}]
+,
+
+  "output_file": ["data/f.asc"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "grid_types": [{"type":"sand_fraction", "path":"data/0-5cm/Sand_0-5cm_gPERkg_SG250.tif"},
+                {"type":"silt_fraction", "path":"data/0-5cm/Silt_0-5cm_gPERkg_SG250.tif"},
+                {"type":"clay_fraction", "path":"data/0-5cm/Clay_0-5cm_gPERkg_SG250.tif"},
+                {"type":"bulk_density", "path":"data/0-5cm/BulkDensity_0-5cm_cgPERcm3_SG250.tif"},
+                {"type":"vwc_33", "path":"data/0-5cm/wv0033_0-5cm_mean.tif"},
+                {"type":"vwc_1500", "path":"data/0-5cm/wv1500_0-5cm_mean.tif"}],
+
+  "output_files": [
+    "data/0-5cm_processed/Ks.asc",
+    "data/0-5cm_processed/theta_r.asc",
+    "data/0-5cm_processed/theta_s.asc",
+    "data/0-5cm_processed/psib.asc",
+    "data/0-5cm_processed/m.asc"
+  ]
+}

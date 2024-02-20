@@ -520,7 +520,7 @@ class InOut:
             dst.write(data, 1)
 
     @staticmethod
-    def read_config(file_path):
+    def read_json(file_path):
         with open(file_path, 'r') as f:
-            config = json.load(f)
-        return config
+            input = json.load(f)
+        return input

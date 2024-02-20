@@ -1,5 +1,6 @@
 import os
 import numpy as np
+from scipy.optimize import curve_fit
 from rosetta import rosetta, SoilData
 
 from pytRIBS.model.inout import InOut
@@ -66,7 +67,7 @@ class Preprocess(InOut):
 
         return textural_class
 
-    def process_raw_soil(self, grid_input, output=None):
+    def process_raw_soil(self, grid_input, output=None, ks_only=False):
         """
         Writes ascii grids Ks, theta_s, theta_r, psib, and m from gridded soil data for % sand, silt, clay, bulk density, and volumetric water content at 33 and 1500 kPa.
 
@@ -80,10 +81,11 @@ class Preprocess(InOut):
                                     {'type':'vwc_33', 'path':'path/to/grid'},
                                     {'type':'vwc_1500', 'path':'path/to/grid'}]
 
-                                    If a string is provided, it is treated as the path to a configuration file. The
+                                    If a string is provided, it is treated as the path to a file containing the
                                     configuration file must be written in json format.
 
         - output (list, optional): List of output file names for different soil properties.
+        - ks_only True will only write rasters for ks, this is useful if using compute_decay_ks
 
         Note:
         - The 'grid_types' key should contain a list of dictionaries, each specifying a grid type and its corresponding file path.
@@ -94,7 +96,7 @@ class Preprocess(InOut):
         # Check if grid_input is a string (path to a config file)
         if isinstance(grid_input, str):
             # Read configuration from the file
-            config = self.read_config(grid_input)
+            config = self.read_json(grid_input)
             grids = config['grid_types']
             output_files = config['output_files']
         elif isinstance(grid_input, list):
@@ -121,7 +123,7 @@ class Preprocess(InOut):
         geo_tiff = None
 
         # Loop through specified file paths
-        for cnt,g in enumerate(grids):
+        for cnt, g in enumerate(grids):
             grid_type, path = g['type'], g['path']
             print(f"Ingesting {grid_type} from: {path}")
             geo_tiff = self.read_ascii(path)
@@ -145,14 +147,13 @@ class Preprocess(InOut):
                 array = array / 100  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[3, :, :] = array
             elif grid_type == 'vwc_33':
-                array = array / 100  # convert bulk density from cg/cm3 to g/cm3
+                array = array / 1000  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[4, :, :] = array
             elif grid_type == 'vwc_1500':
-                array = array / 100  # convert bulk density from cg/cm3 to g/cm3
+                array = array / 1000 # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[5, :, :] = array
 
         profile = geo_tiff['profile']
-
 
         # Initialize parameter grids, 3 grids - 1 mean values, 2 std deviations, 3 code/flag
         theta_r, theta_s, ks, psib, m = np.zeros((3, *size)), np.zeros((3, *size)), np.zeros((3, *size)), np.zeros(
@@ -171,8 +172,8 @@ class Preprocess(InOut):
         for i in range(0, size[0]):
             for j in range(0, size[1]):
                 # Organize array for input into packag
-                data = [sg250_data[x, i, j] for x in np.arange(0,6)]
-                soil_data = SoilData.from_array(data)
+                data = [sg250_data[x, i, j] for x in np.arange(0, 6)]
+                soil_data = SoilData.from_array([data])
                 mean, stdev, codes = rosetta(3, soil_data)  # apply Rosetta version 3
                 theta_r[:, i, j] = [mean[0, 0], stdev[0, 0], codes[0]]
                 theta_s[:, i, j] = [mean[0, 1], stdev[0, 1], codes[0]]
@@ -189,8 +190,109 @@ class Preprocess(InOut):
                 # Convert from log10(n) into n
                 m[0, i, j] = 1 - (1 / (10 ** mean[0, 3]))
 
-        soil_prop = [ks, theta_r, theta_s, psib, m]
+        # for now only write out mean values
+        soil_prop = [ks[0, :, :], theta_r[0, :, :], theta_s[0, :, :], psib[0, :, :], m[0, :, :]]
 
-        for soil_property, name in zip(soil_prop, output_files):
-            temp = {'data': soil_property, 'profile': profile}
-            self.write_ascii(temp, name)
+        if ks_only:
+            soi_raster = {'data': soil_prop[0], 'profile': profile}
+            self.write_ascii(soi_raster, output_files[0])
+        else:
+            for soil_property, name in zip(soil_prop, output_files):
+                soi_raster = {'data': soil_property, 'profile': profile}
+                self.write_ascii(soi_raster, name)
+
+    def compute_ks_decay(self, grid_input, output=None):
+        """
+        Produces raster for the conductivity decay parameter f, following Ivanov et al., 2004.
+        :param dict grid_input: If a dictionary list, keys are "depth" and "path" for each soil property.
+                                Depth should be provided in units of mm.
+                                    Format of dictionary list follows (from shallowest to deepest):
+                                    [{'depth':25 , 'path':'path/to/25_mm_ks'},
+                                    ...
+                                    {'depth':800 , 'path':'path/to/800_mm_ks'},]
+
+                                    If a string is provided, it is treated as the path to a configuration file. The
+                                    configuration file must be written in json format.
+        :param str output: Location to save raster with conductivity decay parameter f.
+        """
+        # Check if grid_input is a string (path to a config file)
+        if isinstance(grid_input, str):
+            # Read configuration from the file
+            config = self.read_json(grid_input)
+            grids = config['grid_depth']
+            output_file = config['output_file']
+        elif isinstance(grid_input, list):
+            # Use provided dictionary
+            grids = grid_input
+            output_file = output or ['f.asc']
+        else:
+            print('Invalid input format. Provide either a dictionary or a path to a configuration file.')
+            return
+
+        # Check if each file specified in the dictionary or config exists
+        for g in grids:
+            grid_type, path = g['depth'], g['path']
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f'Cannot find: {path} for grid type: {grid_type}')
+
+        ks_data = None
+        size = None
+        raster = None
+        depth_vec = np.zeros(len(grids))
+
+        # Loop through specified file paths
+        for cnt, g in enumerate(grids):
+            depth, path = g['depth'], g['path']
+            print(f"Ingesting Ks grid at {depth} from: {path}")
+            raster = self.read_ascii(path)
+            array = raster['data']
+            depth_vec[cnt] = depth
+
+            if cnt == 0:
+                size = array.shape
+                ks_data = np.zeros((len(grids), size[0], size[1]))
+                ks_data[cnt, :, :] = array
+            else:
+                ks_data[cnt, :, :] = array
+
+        # Ensure that ks grids are sorted from surface to the deepest depth
+        depth_sorted = np.argsort(depth_vec)
+        ks_data = ks_data[depth_sorted]
+
+        depth_vec = depth_vec[depth_sorted]
+        depth_vec = depth_vec.astype(float)  # ensure float for fitting
+
+        profile = raster['profile']  # for writing later
+
+        # Initialize parameter grids
+        f_grid = np.zeros(np.shape(array))  # parameter grid
+        fcov = np.zeros(np.shape(array))  # coef of variance grid
+
+        # Loop through raster's and compute soil properties using rosetta-soil package
+        for i in range(0, size[0]):
+            for j in range(0, size[1]):
+                y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
+
+                try:
+                    # ensure float
+                    y = y.astype(float)
+                except ValueError:
+                    raise ValueError("Input data must be convertible to float")
+
+                k0 = y[0]
+
+                # define exponential decay function, Ivanov et al. (2004) eqn 17
+                decay = lambda x, f, k=k0: k * (f * x / (np.exp(f * x) - 1.0))
+
+                # perform curve fitting, set limits on f and surface Ksat for stability
+                minf, maxf = 1E-7, k0 - 1E-5
+                minks = 1
+
+                param, param_cov = curve_fit(decay, depth_vec, y, bounds = ([minf, maxf],[minks, k0]))
+
+                # Write Curve fitting results to grid
+                f_grid[i, j] = param[0]
+                fcov[i, j] = param_cov[0, 0]
+
+        f_raster = {'data': f_grid, 'profile': profile}
+        self.write_ascii(f_raster, output_file[0])
