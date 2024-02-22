@@ -1,8 +1,0 @@
-numpy
-pandas
-matplotlib
-geopandas
-shapely
-rasterio
-scipy
-rosetta-soil

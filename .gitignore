@@ -8,3 +8,5 @@ scratch/HJ_BenchMark/tRIBS
 scratch/HJ_BenchMark/syc_domain/
 .DS_Store
 /jupyter examples/soil_preprocess_workflow/data/
+dist
+pytRIBS.egg-info
