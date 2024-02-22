@@ -5,6 +5,7 @@ import numpy as np
 
 import geopandas as gpd
 import pandas as pd
+import pyvista as pv
 from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
@@ -455,6 +456,56 @@ class SharedMixin:
 
         except FileNotFoundError:
             return
+
+    def plot_mesh(self,mesh):
+        """
+
+        """
+        if isinstance(mesh,str):
+            # check if path exists
+            mesh = pv.read(mesh)
+
+        plotter = pv.Plotter()
+        plotter.add_mesh(mesh, scalars='Aspect Ratio', cmap='viridis', show_edges=True)
+
+        plotter.show()
+
+        return plotter
+
+    # This assumes that get_invariant_properties() has been called since requires vornoi? D
+
+    def get_invariant_properties(self):
+
+        parallel_flag = int(self.options["parallelmode"]['value'])
+
+        # read in integrated spatial vars for waterbalance calcs and spatial maps
+        if parallel_flag == 1:
+            self.int_spatial_vars = self.merge_parallel_spatial_files(suffix="_00i",
+                                                                      dtime=int(self.options['runtime']['value']))
+        elif parallel_flag == 0:
+            runtime = int(self.options["runtime"]["value"])
+            outfilename = self.options["outfilename"]["value"]
+            intfile = f"{outfilename}.{runtime}_00i"
+
+            self.int_spatial_vars = pd.read_csv(intfile)
+
+            # Note one could use max CAr, but it overestimates area according to Voi geomerty
+            self.int_spatial_vars['weight'] = self.int_spatial_vars.VAr.values / self.int_spatial_vars.VAr.sum()
+
+        else:
+            print('Unable To Read Integrated Spatial File (*_00i).')
+            self.voronoi = None
+
+        # read in voronoi files only once
+        if parallel_flag == 1:
+            self.voronoi = self.merge_parallel_voi()
+
+        elif parallel_flag == 0:
+            self.voronoi, _ = self.read_voi_file()
+        else:
+            print('Unable To Load Voi File(s).')
+            self.voronoi = None
+
 
 
 
