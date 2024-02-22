@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytRIBS"
+authors = [{name = "L. Wren Raming", email = "lraming@asu.edu"},
+    {name = "C. Josh Cederstrom", email = "cjceders@asu.edu"},
+    {name = "Enrique R. Vivoni", email = "evivoni@asu.edu"}]
+description = "A pre-to-post processing python package for the distributed hydrological model tRIBS"
+readme = "README.md"
+license = {text = "GPL-version 2"}
+keywords = ["hydrology","modeling"]
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "geopandas",
+    "shapely",
+    "rasterio",
+    "scipy",
+    "rosetta-soil"
+]
+version = "0.1.1"
+
+[project.urls]
+Repository = "https://github.com/WrenRaming/pytRIBS"

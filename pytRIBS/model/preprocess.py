@@ -8,9 +8,9 @@ from pytRIBS.model.inout import InOut
 
 ### PREPROCESSIN
 # 1 delineate watersheds (pyshed)
-# 1.creat points file for hydrological conditioned tin Mesh
-# 2 ingest soil and landuse (pyshed)
-# 3 apply pedo transfer functions
+# 1.create points file for hydrological conditioned tin Mesh
+# 2 ingest soil and land use (pyshed)
+# 3 apply pedotransfer functions
 # others?
 
 class Preprocess(InOut):
