@@ -1,4 +1,5 @@
 numpy
+pyvista
 pandas
 matplotlib
 geopandas
