@@ -460,7 +460,9 @@ class SharedMixin:
         except FileNotFoundError:
             return
 
-    def plot_mesh(self, mesh):
+    @staticmethod
+    def plot_mesh(mesh, scalar=None, **kwargs):
+
         """
 
         """
@@ -468,8 +470,20 @@ class SharedMixin:
             # check if path exists
             mesh = pv.read(mesh)
 
+        if scalar is None:
+            scalar = mesh.get_array('Altitude')
+
+        # set closed points or cells to nan
+        if len(scalar) == mesh.n_points:
+            scalar[mesh['BC_code'] == 1] = np.nan
+        elif len(scalar) == mesh.n_cells:
+            extracted = mesh.extract_points(mesh['BC_code'] == 1, adjacent_cells=True)
+            scalar[extracted.cell_data['vtkOriginalCellIds']] = np.nan
+        else:
+            print("Scalar dimensions must match either the number of points or cells in the mesh.")
+
         plotter = pv.Plotter()
-        plotter.add_mesh(mesh, scalars='Aspect Ratio', cmap='viridis', show_edges=True)
+        plotter.add_mesh(mesh, scalars=scalar, **kwargs)
 
         plotter.show()
 

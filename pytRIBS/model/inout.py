@@ -39,6 +39,34 @@ class InOut:
                 nodes = gpd.GeoDataFrame(node_features)
                 print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
             return nodes
+    @staticmethod
+    def write_point_file(nodes_gdf, output_file):
+        """
+        Write a points file from a GeoDataFrame of nodes.
+
+        Parameters:
+        - nodes_gdf: GeoDataFrame
+            GeoDataFrame containing nodes with 'geometry', 'elevation', and 'bc' columns.
+        - output_file: str
+            Path to the output points file.
+
+        Returns:
+        None
+        """
+        # Ensure 'geometry' column is of Point type
+        if not isinstance(nodes_gdf['geometry'].iloc[0], Point):
+            nodes_gdf['geometry'] = nodes_gdf['geometry'].apply(Point)
+
+        # Open the output file for writing
+        with open(output_file, 'w') as file:
+            # Write the number of points as the first line
+            file.write(f"{len(nodes_gdf)}\n")
+
+            # Write each point's x, y, z, and bc values on separate lines
+            for _, row in nodes_gdf.iterrows():
+                x, y = row['geometry'].x, row['geometry'].y
+                z, bc = row['elevation'], int(row['bc'])
+                file.write(f"{x} {y} {z} {bc}\n")
 
     def write_input_file(self, output_file_path):
         """

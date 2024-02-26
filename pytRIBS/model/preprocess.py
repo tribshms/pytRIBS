@@ -1,7 +1,10 @@
 import os
 import numpy as np
 from scipy.optimize import curve_fit
+from shapely.geometry import Point
+import geopandas as gpd
 from rosetta import rosetta, SoilData
+
 
 from pytRIBS.model.inout import InOut
 
@@ -17,6 +20,42 @@ class Preprocess(InOut):
     """
 
     """
+    @staticmethod
+    def remove_points_near_boundary(points_gdf, boundary_gdf, distance_threshold):
+        """
+        Removes points from the points file (points_gdf) that are closer than distance_threshold to the boundary of
+        the watershed (boundary_gdf).
+
+        Parameters:
+        - points_gdf: GeoDataFrame containing points with a 'geometry' column.
+        - boundary_gdf: GeoDataFrame containing the boundary with a 'geometry' column.
+        - distance_threshold: Threshold distance for removing points near the boundary.
+
+        Returns:
+        - GeoDataFrame with points removed near the boundary.
+        """
+
+        # Ensure the GeoDataFrames have 'geometry' columns with appropriate geometries
+        if 'geometry' not in points_gdf.columns or not isinstance(points_gdf['geometry'].iloc[0], Point):
+            raise ValueError("points_gdf must have a 'geometry' column with Point geometries.")
+
+        if 'geometry' not in boundary_gdf.columns:
+            raise ValueError("boundary_gdf must have a 'geometry' column.")
+
+        # Make a copy of the DataFrame
+        points_gdf_copy = points_gdf.copy()
+
+        # Calculate distances from points to the boundary
+        dist = np.array([boundary_gdf.boundary.distance(points_gdf_copy.iloc[x].geometry).min() for x in
+                         range(len(points_gdf_copy))])
+        points_gdf_copy['dist'] = dist
+        idx = (points_gdf_copy['dist'] < distance_threshold) & (
+                    (points_gdf_copy['bc'] == 0) | (points_gdf_copy['bc'] == 3))
+
+        # Remove points within the distance threshold
+        points_gdf_copy = points_gdf_copy[~idx]
+
+        return points_gdf_copy
 
     # coding=utf-8
     # This script computes soil textural class using the USDA Soil Triangle and soil parameters required for tRIBS
