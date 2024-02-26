@@ -1,6 +1,7 @@
 .idea
 .DS_Store
 __pycache__
+debug.py
 scratch/HJ_BenchMark/results/*
 scratch/HJ_BenchMark/src/*
 scratch/HJ_BenchMark/build/

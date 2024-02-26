@@ -38,14 +38,19 @@ class Results(InfileMixin, SharedMixin, WaterBalance):
         self.geo = {"UTM_Zone": UTM_Zone, "EPSG": EPSG,
                     "Projection": None}  # Geographic properties of tRIBS model domain.
 
-        self.get_invariant_properties() # shared
+        self.get_invariant_properties()  # shared
 
     def get_mrf_results(self, mrf_file=None):
         """
 
         """
         if mrf_file is None:
-            mrf_file = self.options["outhydrofilename"]["value"] + str(self.options["runtime"]["value"]) + "_00.mrf"
+            runtime = self.options["runtime"]["value"]
+
+            while len(runtime) < 4:
+                runtime = '0' + runtime
+
+            mrf_file = self.options["outhydrofilename"]["value"] + runtime + "_00.mrf"
 
         # Read the first two rows to get column names and units
         with open(mrf_file, 'r') as file:
