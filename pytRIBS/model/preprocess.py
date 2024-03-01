@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import rasterio
 from scipy.optimize import curve_fit
 from shapely.geometry import Point
 import geopandas as gpd
@@ -56,6 +57,37 @@ class Preprocess(InOut):
         points_gdf_copy = points_gdf_copy[~idx]
 
         return points_gdf_copy
+
+    @staticmethod
+    def update_elevation_from_dem(gdf, dem_path, elevation_column='elevation'):
+        """
+        Update the elevation column in a GeoDataFrame using values from a Digital Elevation Model (DEM).
+
+        Parameters:
+        - gdf: GeoDataFrame
+            GeoDataFrame containing points with coordinates.
+        - dem_path: str
+            Path to the Digital Elevation Model (DEM) raster file.
+        - elevation_column: str, optional
+            Name of the column to be updated with elevation values. Default is 'elevation'.
+
+        Returns:
+        GeoDataFrame
+            GeoDataFrame with updated elevation values.
+        """
+        # Open the DEM raster using rasterio
+        with rasterio.open(dem_path) as dem:
+            # Loop through each point in the GeoDataFrame
+            for index, point in gdf.iterrows():
+                # Get the coordinates of the point
+                lon, lat = point['geometry'].x, point['geometry'].y
+
+                # Sample elevation from the DEM raster at the point coordinates
+                for val in dem.sample([(lon, lat)]):
+                    # Update the elevation column in the GeoDataFrame
+                    gdf.at[index, elevation_column] = val[0]
+
+        return gdf
 
     # coding=utf-8
     # This script computes soil textural class using the USDA Soil Triangle and soil parameters required for tRIBS

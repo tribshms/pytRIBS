@@ -6,7 +6,7 @@ class WaterBalance:
     def get_mrf_water_balance(self, method):
         """
         """
-        waterbalance = self._run_mrf_water_balance(self,method)
+        waterbalance = self._run_mrf_water_balance(method)
         self.mrf['waterbalance'] = waterbalance
     
     
