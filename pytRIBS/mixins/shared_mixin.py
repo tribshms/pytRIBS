@@ -237,16 +237,20 @@ class SharedMixin:
             return None
 
         voi_list = []
+        processor_list = []
         # gdf = gpd.GeoDataFrame(columns=['ID', 'geometry'])
 
         for file in parallel_voi_files:
             voi = self.read_voi_file(f"{outfilename}/{file}")
             if voi is not None:
                 voi_list.append(voi[0])
+                processor = int(file.split("voi.")[-1])  # Extract processor number from file name
+                processor_list.extend(np.ones(len(voi[0])) * int(processor))
             else:
                 print(f'Voi file {file} is empty.')
 
         combined_gdf = gpd.pd.concat(voi_list, ignore_index=True)
+        combined_gdf['processor'] = processor_list  # Add 'processor' column
         combined_gdf = combined_gdf.sort_values(by='ID')
 
         if join is not None:
@@ -516,7 +520,7 @@ class SharedMixin:
 
         else:
             print('Unable To Read Integrated Spatial File (*_00i).')
-            self.voronoi = None
+            self.int_spatial_vars = None
 
         # read in voronoi files only once
         if parallel_flag == 1:

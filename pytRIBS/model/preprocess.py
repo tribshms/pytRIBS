@@ -2,7 +2,7 @@ import os
 import numpy as np
 import rasterio
 from scipy.optimize import curve_fit
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 import geopandas as gpd
 from rosetta import rosetta, SoilData
 
@@ -21,6 +21,94 @@ class Preprocess(InOut):
     """
 
     """
+
+    # MESH TOOLS
+    @staticmethod
+    def remove_duplicates_points(gdf, radius):
+        # Create a new column with a buffer around each point
+        gdf['buffer'] = gdf['geometry'].buffer(radius)
+
+        # Iterate through each row and check if there are other points within the buffer
+        to_remove = set()
+        for idx, row in gdf.iterrows():
+            if idx not in to_remove:
+                # Extract the buffer of the current row
+                current_buffer = row['buffer']
+
+                # Check for overlapping points within the buffer
+                overlapping_points = gdf[gdf['geometry'].within(current_buffer) & (gdf.index != idx)]
+
+                # Mark overlapping points for removal, excluding those with 'bc' equal to 2
+                to_remove.update(overlapping_points[overlapping_points['bc'] != 2].index)
+
+        # Drop unnecessary columns
+        result = gdf.drop(to_remove, axis=0).drop('buffer', axis=1)
+
+        return result
+
+    @staticmethod
+    def generate_points_along_stream(gdf, points_per_meter):
+        """
+        Generate evenly distributed points along each stream segment in a GeoDataFrame.
+
+        Parameters:
+        - gdf: GeoDataFrame
+            GeoDataFrame containing the stream network with LineString geometries.
+        - points_per_meter: int
+            Number of points to generate per meter along each stream segment.
+
+        Returns:
+        GeoDataFrame
+            GeoDataFrame containing the generated points.
+        """
+        # Create an empty GeoDataFrame to store the generated points
+        points_list = []
+
+        # Iterate over each stream segment in the GeoDataFrame
+        for idx, row in gdf.iterrows():
+            # Extract the LineString geometry for the current stream segment
+            line = row['geometry']
+
+            # Calculate the total length of the stream segment
+            total_length = line.length
+
+            # Calculate the total number of points based on the total length and points_per_meter
+            total_points = int(total_length * points_per_meter)
+
+            # Generate evenly distributed points along the stream segment
+            points = [line.interpolate(i / total_points, normalized=True) for i in range(total_points + 1)]
+
+            # Add the points to the list
+            points_list.extend({'geometry': Point(p)} for p in points)
+
+        # Create the GeoDataFrame from the list of dictionaries
+        points_gdf = gpd.GeoDataFrame(points_list)
+
+        return points_gdf
+
+    @staticmethod
+    def generate_buffer_points_along_stream(network, resolution=20, buffer_distance=25):
+        # Create buffer geometries
+        buffer_geoms = [line.buffer(buffer_distance) for line in network['geometry']]
+        buffer_gdf = gpd.GeoDataFrame(geometry=buffer_geoms)
+        combined_geometry = buffer_gdf.unary_union
+
+        # Get bounds of the combined geometry
+        latmin, lonmin, latmax, lonmax = combined_geometry.bounds
+
+        # Generate points within the specified resolution
+        points = [Point((round(lat, 4), round(lon, 4)))
+                  for lat in np.arange(latmin, latmax, resolution)
+                  for lon in np.arange(lonmin, lonmax, resolution)]
+
+        # Filter valid points inside the shape
+        valid_points = [point for point in points if combined_geometry.contains(point)]
+
+        # Create a GeoDataFrame with empty columns 'bc' and 'elevation'
+        columns = ['bc', 'elevation']
+        valid_points_gdf = gpd.GeoDataFrame(geometry=valid_points, columns=columns)
+
+        return valid_points_gdf
     @staticmethod
     def remove_points_near_boundary(points_gdf, boundary_gdf, distance_threshold):
         """
