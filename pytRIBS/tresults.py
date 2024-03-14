@@ -276,7 +276,7 @@ class Results(InfileMixin, SharedMixin, WaterBalance):
             ax.clear()
 
             df = df_dict[key]
-            gdf = self.voi.copy()
+            gdf = self.voronoi.copy()
             gdf = gdf.merge(df, on="ID", how="inner")
 
             if vlims is not None:
