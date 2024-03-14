@@ -97,18 +97,49 @@ class Preprocess(InOut):
         latmin, lonmin, latmax, lonmax = combined_geometry.bounds
 
         # Generate points within the specified resolution
-        points = [Point((round(lat, 4), round(lon, 4)))
-                  for lat in np.arange(latmin, latmax, resolution)
-                  for lon in np.arange(lonmin, lonmax, resolution)]
+        points = []
 
-        # Filter valid points inside the shape
-        valid_points = [point for point in points if combined_geometry.contains(point)]
+        for lat in np.arange(latmin, latmax, resolution):
+            for lon in np.arange(lonmin, lonmax, resolution):
+                point = Point(round(lat, 4), round(lon, 4))
+
+                # Calculate the distance to the nearest point on the stream network
+                distance_to_stream = min(point.distance(line) for line in network['geometry'])
+
+                # Adjust the point density based on distance (you can customize this function)
+                weight = 1 / (1 + distance_to_stream)
+
+                # Randomly discard points with a probability based on the weight
+                if np.random.rand() < weight and combined_geometry.contains(point):
+                    points.append(point)
 
         # Create a GeoDataFrame with empty columns 'bc' and 'elevation'
         columns = ['bc', 'elevation']
-        valid_points_gdf = gpd.GeoDataFrame(geometry=valid_points, columns=columns)
+        valid_points_gdf = gpd.GeoDataFrame(geometry=points, columns=columns)
 
         return valid_points_gdf
+    # def generate_buffer_points_along_stream(network, resolution=20, buffer_distance=25):
+    #     # Create buffer geometries
+    #     buffer_geoms = [line.buffer(buffer_distance) for line in network['geometry']]
+    #     buffer_gdf = gpd.GeoDataFrame(geometry=buffer_geoms)
+    #     combined_geometry = buffer_gdf.unary_union
+    #
+    #     # Get bounds of the combined geometry
+    #     latmin, lonmin, latmax, lonmax = combined_geometry.bounds
+    #
+    #     # Generate points within the specified resolution
+    #     points = [Point((round(lat, 4), round(lon, 4)))
+    #               for lat in np.arange(latmin, latmax, resolution)
+    #               for lon in np.arange(lonmin, lonmax, resolution)]
+    #
+    #     # Filter valid points inside the shape
+    #     valid_points = [point for point in points if combined_geometry.contains(point)]
+    #
+    #     # Create a GeoDataFrame with empty columns 'bc' and 'elevation'
+    #     columns = ['bc', 'elevation']
+    #     valid_points_gdf = gpd.GeoDataFrame(geometry=valid_points, columns=columns)
+    #
+    #     return valid_points_gdf
     @staticmethod
     def remove_points_near_boundary(points_gdf, boundary_gdf, distance_threshold):
         """
