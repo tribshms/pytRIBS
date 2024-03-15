@@ -242,7 +242,7 @@ class InOut:
     @staticmethod
     def write_met_station(df, output_file_path):
         """
-        Converts a DataFrame with 'date' and 'PA','TD','RH','VP','XC','US','TA','TS','NR' columns to flat file format.
+        Converts a DataFrame with 'date' and 'PA','TD' or 'RH' or 'VP','XC','US','TA','TS','NR' columns to flat file format.
         See tRIBS documentation for more details on weather station data structure (i.e. *mdf files).
         :param df: Pandas DataFrame with 'date' and 'R' columns.
         :param output_file_path: Output flat file path.
@@ -253,11 +253,22 @@ class InOut:
         df['D'] = df['date'].dt.day
         df['H'] = df['date'].dt.hour
 
-        # Reorder columns
-        df = df[['Y', 'M', 'D', 'H', 'PA','TD','RH','VP','XC','US','TA','TS','NR']]
+        # Format 'D' and 'H' columns with zero-padding
+        df['D'] = df['D'].apply(lambda x: str(x).zfill(2))
+        df['H'] = df['H'].apply(lambda x: str(x).zfill(2))
 
-        # Write DataFrame to flat file
-        df.to_csv(output_file_path, sep=' ', index=False)
+        # Check which column ('TD', 'RH', or 'VP') is present in the DataFrame
+        present_column = next((col for col in ['TD', 'RH', 'VP'] if col in df.columns), None)
+
+        if present_column is not None:
+            # Reorder columns
+            df = df[['Y', 'M', 'D', 'H', 'PA', present_column, 'XC', 'US', 'TA', 'IS', 'TS', 'NR']]
+
+            # Write DataFrame to flat file with tab as separator
+            df.to_csv(output_file_path, sep='\t', index=False)
+        else:
+            print("Error: One of 'TD', 'RH', or 'VP' column must be present in the DataFrame.")
+
 
     @staticmethod
     def write_met_sdf(output_file_path, station_list):
