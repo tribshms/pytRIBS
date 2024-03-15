@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 import getpass
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import rasterio
 from shapely.geometry import Point
@@ -540,8 +541,11 @@ class InOut:
                 count=1,
                 compress=None,
                 driver='AAIGrid',  # ASCII Grid format
-                nodata=-9999,  # or any other nodata value you want to use
+                nodata=-9999.0,  # or any other nodata value you want to use
             )
+
+        # Replace nan values with nodata value
+        data = np.where(np.isnan(data), profile['nodata'], data)
 
         # Write the data and metadata to the ASCII raster file
         with rasterio.open(output_file_path, 'w', **profile) as dst:
