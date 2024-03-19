@@ -461,28 +461,32 @@ class Preprocess(InOut):
         # Loop through raster's and compute soil properties using rosetta-soil package
         for i in range(0, size[0]):
             for j in range(0, size[1]):
-                y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
+                if np.any(ks_data[i, j] == profile['nodata']):
+                    f_grid[i, j] = profile['nodata']
+                    fcov[i, j] = profile['nodata']
+                else:
+                    y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
 
-                try:
-                    # ensure float
-                    y = y.astype(float)
-                except ValueError:
-                    raise ValueError("Input data must be convertible to float")
+                    try:
+                        # ensure float
+                        y = y.astype(float)
+                    except ValueError:
+                        raise ValueError("Input data must be convertible to float")
 
-                k0 = y[0]
+                    k0 = y[0]
 
-                # define exponential decay function, Ivanov et al. (2004) eqn 17
-                decay = lambda x, f, k=k0: k * (f * x / (np.exp(f * x) - 1.0))
+                    # define exponential decay function, Ivanov et al. (2004) eqn 17
+                    decay = lambda x, f, k=k0: k * (f * x / (np.exp(f * x) - 1.0))
 
-                # perform curve fitting, set limits on f and surface Ksat for stability
-                minf, maxf = 1E-7, k0 - 1E-5
-                minks = 1
+                    # perform curve fitting, set limits on f and surface Ksat for stability
+                    minf, maxf = 1E-7, k0 - 1E-5
+                    minks = 1
 
-                param, param_cov = curve_fit(decay, depth_vec, y, bounds = ([minf, maxf],[minks, k0]))
+                    param, param_cov = curve_fit(decay, depth_vec, y, bounds = ([minf, maxf],[minks, k0]))
 
-                # Write Curve fitting results to grid
-                f_grid[i, j] = param[0]
-                fcov[i, j] = param_cov[0, 0]
+                    # Write Curve fitting results to grid
+                    f_grid[i, j] = param[0]
+                    fcov[i, j] = param_cov[0, 0]
 
         f_raster = {'data': f_grid, 'profile': profile}
         self.write_ascii(f_raster, output_file[0])
