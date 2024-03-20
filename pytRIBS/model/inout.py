@@ -236,7 +236,7 @@ class InOut:
     @staticmethod
     def read_met_station(file_path):
         # TODO add var for specifying Station ID and doc
-        df = pd.read_csv(file_path, header=0, sep='\s+')
+        df = pd.read_csv(file_path, header=0, sep=r'\s+')
         # convert year, month, day to datetime and drop columns
         df.rename(columns={'Y': 'year', 'M': 'month', 'D': 'day', 'H': 'hour'}, inplace=True)
         df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
@@ -535,6 +535,11 @@ class InOut:
         data = raster_dict['data']
         profile = raster_dict['profile']
 
+        # Remove unsupported creation options
+        unsupported_options = ['BLOCKXSIZE', 'BLOCKYSIZE', 'TILED', 'COMPRESS', 'INTERLEAVE', 'DX', 'DY']
+        for option in unsupported_options:
+            profile.pop(option, None)
+
         # Check if the driver is set to 'AAIGrid' (ASCII format)
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
             # Update the profile for ASCII raster format
@@ -545,6 +550,7 @@ class InOut:
                 driver='AAIGrid',  # ASCII Grid format
                 nodata=-9999.0,  # or any other nodata value you want to use
             )
+
 
         # Replace nan values with nodata value
         data = np.where(np.isnan(data), profile['nodata'], data)

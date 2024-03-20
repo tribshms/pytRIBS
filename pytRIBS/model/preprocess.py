@@ -1,16 +1,19 @@
 import os
+import re
+
 import numpy as np
 import rasterio
 from scipy.optimize import curve_fit
+from scipy.ndimage import map_coordinates
 from shapely.geometry import LineString, Point
+from owslib.wcs import WebCoverageService
 import geopandas as gpd
 from rosetta import rosetta, SoilData
-
 
 from pytRIBS.model.inout import InOut
 
 
-### PREPROCESSIN
+### PREPROCESSING
 # 1 delineate watersheds (pyshed)
 # 1.create points file for hydrological conditioned tin Mesh
 # 2 ingest soil and land use (pyshed)
@@ -118,6 +121,7 @@ class Preprocess(InOut):
         valid_points_gdf = gpd.GeoDataFrame(geometry=points, columns=columns)
 
         return valid_points_gdf
+
     # def generate_buffer_points_along_stream(network, resolution=20, buffer_distance=25):
     #     # Create buffer geometries
     #     buffer_geoms = [line.buffer(buffer_distance) for line in network['geometry']]
@@ -170,7 +174,7 @@ class Preprocess(InOut):
                          range(len(points_gdf_copy))])
         points_gdf_copy['dist'] = dist
         idx = (points_gdf_copy['dist'] < distance_threshold) & (
-                    (points_gdf_copy['bc'] == 0) | (points_gdf_copy['bc'] == 3))
+                (points_gdf_copy['bc'] == 0) | (points_gdf_copy['bc'] == 3))
 
         # Remove points within the distance threshold
         points_gdf_copy = points_gdf_copy[~idx]
@@ -208,12 +212,81 @@ class Preprocess(InOut):
 
         return gdf
 
-    # coding=utf-8
-    # This script computes soil textural class using the USDA Soil Triangle and soil parameters required for tRIBS
-    # using the Rosetta Python package.
-    # Manual modifications will need to be to adjust how rasters are read in if script is applied elsewhere,
-    # unit conversions, number of soil properties fed into Rosetta, and assumptions used.
-    # Josh Cederstrom October 2022
+    ### SOIL PRE-PROCESSING
+    def getSoil250(self, bbox, depths, soil_vars, stats, fillnans=True):
+        """
+        Retrieves soil data from ISRIC WCS service and saves it as GeoTIFFs.
+
+        Args:
+            bbox (list): The bounding box coordinates in the format [x1, y1, x2, y2].
+            depths (list): List of soil depths to retrieve data for.
+            soil_vars (list): List of soil variables to retrieve.
+            stats (list): List of statistics to compute for each variable and depth.
+
+        Example:
+            bbox = [387198, 3882394, 412385, 3901885]  # x1,y1,x2,y2
+            depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
+            soil_vars = ['bdod', 'clay', 'sand', 'silt', 'wv1500', 'wv0033', 'wv0010'], see https://maps.isric.org/
+            stats = ['mean'], see prediciton quantiles at https://www.isric.org/explore/soilgrids/faq-soilgrids
+        """
+        epsg = self.geo['EPSG']
+
+        if epsg is None:
+            print("No EPSG code found. Please update model attribute .geo['EPSG'] with EPSG code.")
+            return
+
+        complete = False
+
+        match = re.search(r'EPSG:(\d+)', epsg)
+        if match:
+            epsg = match.group(1)
+
+        data_dir = 'SoilGrid_250_data'
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+            print(f"Directory '{data_dir}' created.")
+
+        os.chdir(data_dir)
+
+        crs = f'urn:ogc:def:crs:EPSG::{epsg}'
+
+        files = []
+
+        for var in soil_vars:
+            wcs = WebCoverageService(f'http://maps.isric.org/mapserv?map=/map/{var}.map', version='1.0.0')
+            for depth in depths:
+                # make directory to store tiffs grouped by depth
+                if not os.path.exists(depth):
+                    os.makedirs(depth)
+                    print(f"Directory '{depth}' created.")
+
+                # for a give variable, depth, and stat write out a geotif
+                for stat in stats:
+                    soil_key = f'{var}_{depth}_{stat}'
+                    response = wcs.getCoverage(identifier=soil_key, crs=crs, bbox=bbox, resx=250, resy=250,
+                                               format='GEOTIFF_INT16',timeout=120)
+
+                    file = f'{depth}/{soil_key}.tif'
+                    files.append(file)
+
+                    with open(file, 'wb') as file:
+                        file.write(response.read())
+                    complete = True
+        if complete:
+            print('Download of SoilGrids250 data complete')
+        else:
+            print('Error in downloading SoilGrids250 data, check inputs.')
+
+        if fillnans:
+            print("Filling NaNs!")
+            for f in files:
+                with rasterio.open(f) as src:
+                    data = src.read(1)
+                    filled_data = rasterio.fill.fillnodata(data, src.profile['nodata'], max_search_distance=3)
+                    src.write(filled_data, 1)
+
+        os.chdir('..')
+
 
     # Compute Soil Texture Class
     @staticmethod
@@ -294,7 +367,7 @@ class Preprocess(InOut):
             grids = grid_input
             output_files = output or ['Ks.asc', 'theta_r.asc', 'theta_s.asc', 'psib.asc', 'm.asc']
         else:
-            print('Invalid input format. Provide either a dictionary or a path to a configuration file.')
+            print('Invalid input format. Provide either a list of dictionaries specifying type and path, or a path to a configuration file.')
             return
 
         # Check if each file specified in the dictionary or config exists
@@ -340,7 +413,7 @@ class Preprocess(InOut):
                 array = array / 1000  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[4, :, :] = array
             elif grid_type == 'vwc_1500':
-                array = array / 1000 # convert bulk density from cg/cm3 to g/cm3
+                array = array / 1000  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[5, :, :] = array
 
         profile = geo_tiff['profile']
@@ -391,6 +464,7 @@ class Preprocess(InOut):
                 soi_raster = {'data': soil_property, 'profile': profile}
                 self.write_ascii(soi_raster, name)
 
+
     def compute_ks_decay(self, grid_input, output=None):
         """
         Produces raster for the conductivity decay parameter f, following Ivanov et al., 2004.
@@ -416,7 +490,7 @@ class Preprocess(InOut):
             grids = grid_input
             output_file = output or ['f.asc']
         else:
-            print('Invalid input format. Provide either a dictionary or a path to a configuration file.')
+            print('Invalid input format. Provide either a list or a path to a configuration file.')
             return
 
         # Check if each file specified in the dictionary or config exists
@@ -461,11 +535,12 @@ class Preprocess(InOut):
         # Loop through raster's and compute soil properties using rosetta-soil package
         for i in range(0, size[0]):
             for j in range(0, size[1]):
-                if np.any(ks_data[i, j] == profile['nodata']):
+                y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
+
+                if np.any(y == profile['nodata']):
                     f_grid[i, j] = profile['nodata']
                     fcov[i, j] = profile['nodata']
                 else:
-                    y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
 
                     try:
                         # ensure float
@@ -482,7 +557,7 @@ class Preprocess(InOut):
                     minf, maxf = 1E-7, k0 - 1E-5
                     minks = 1
 
-                    param, param_cov = curve_fit(decay, depth_vec, y, bounds = ([minf, maxf],[minks, k0]))
+                    param, param_cov = curve_fit(decay, depth_vec, y, bounds=([minf, maxf], [minks, k0]))
 
                     # Write Curve fitting results to grid
                     f_grid[i, j] = param[0]
