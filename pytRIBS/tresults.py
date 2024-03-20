@@ -74,7 +74,7 @@ class Results(InfileMixin, SharedMixin, WaterBalance):
         dt = pd.to_timedelta(results_data_frame['Time'], unit='h')
         results_data_frame['Time'] = [date + step for step in dt]
 
-        self.mrf['mrf'] = results_data_frame.iloc[int(self.runtime['value'])] # This is becasue currently v5.2 tribs has issues with mrf writing extra time steps
+        self.mrf['mrf'] = results_data_frame.iloc[0:int(self.options['runtime']['value'])-1] # This is becasue currently v5.2 tribs has issues with mrf writing extra time steps
 
     def get_element_results(self):
         """

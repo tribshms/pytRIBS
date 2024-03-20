@@ -89,6 +89,8 @@ class InOut:
                 if "key_word" in subdict and "value" in subdict:
                     keyword = subdict["key_word"]
                     value = subdict["value"]
+                    if value is None:
+                        value = ""
                     output_file.write(f"{keyword}\n")
                     output_file.write(f"{value}\n\n")
 
