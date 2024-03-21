@@ -7,3 +7,5 @@ shapely
 rasterio
 scipy
 rosetta-soil
+owslib
+matplotlib_scalebar

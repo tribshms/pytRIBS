@@ -501,7 +501,7 @@ class SharedMixin:
 
         # read in integrated spatial vars for waterbalance calcs and spatial maps
         if parallel_flag == 1:
-            temp = self.merge_parallel_spatial_files(suffix="_00i",dtime=int(self.options['runtime']['value']))
+            temp = self.merge_parallel_spatial_files(suffix="_00i",dtime=int(self.options['runtime']['value']),write=False)
             self.int_spatial_vars = temp[self.options['runtime']['value']]
 
         elif parallel_flag == 0:
