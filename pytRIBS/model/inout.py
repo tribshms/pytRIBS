@@ -352,7 +352,7 @@ class InOut:
             # Write station information
             for type in soil_list:
                 line = f"{type['ID']} {type['Ks']} {type['thetaS']} {type['thetaR']} {type['m']} {type['PsiB']} " \
-                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}"
+                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}\n"
                 file.write(line)
 
     def read_landuse_table(self, file_path=None):
@@ -525,6 +525,12 @@ class InOut:
         return raster
 
     @staticmethod
+    def read_json(file_path):
+        with open(file_path, 'r') as f:
+            input = json.load(f)
+        return input
+
+    @staticmethod
     def write_ascii(raster_dict, output_file_path):
         """
         Writes raster data and metadata from a dictionary to an ASCII raster file.
@@ -558,9 +564,3 @@ class InOut:
         # Write the data and metadata to the ASCII raster file
         with rasterio.open(output_file_path, 'w', **profile) as dst:
             dst.write(data, 1)
-
-    @staticmethod
-    def read_json(file_path):
-        with open(file_path, 'r') as f:
-            input = json.load(f)
-        return input
