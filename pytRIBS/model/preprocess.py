@@ -1,16 +1,20 @@
 import os
+import re
+
 import numpy as np
 import rasterio
+import rasterio.fill as fill
 from scipy.optimize import curve_fit
+from scipy.ndimage import map_coordinates
 from shapely.geometry import LineString, Point
+from owslib.wcs import WebCoverageService
 import geopandas as gpd
 from rosetta import rosetta, SoilData
-
 
 from pytRIBS.model.inout import InOut
 
 
-### PREPROCESSIN
+### PREPROCESSING
 # 1 delineate watersheds (pyshed)
 # 1.create points file for hydrological conditioned tin Mesh
 # 2 ingest soil and land use (pyshed)
@@ -118,6 +122,7 @@ class Preprocess(InOut):
         valid_points_gdf = gpd.GeoDataFrame(geometry=points, columns=columns)
 
         return valid_points_gdf
+
     # def generate_buffer_points_along_stream(network, resolution=20, buffer_distance=25):
     #     # Create buffer geometries
     #     buffer_geoms = [line.buffer(buffer_distance) for line in network['geometry']]
@@ -170,7 +175,7 @@ class Preprocess(InOut):
                          range(len(points_gdf_copy))])
         points_gdf_copy['dist'] = dist
         idx = (points_gdf_copy['dist'] < distance_threshold) & (
-                    (points_gdf_copy['bc'] == 0) | (points_gdf_copy['bc'] == 3))
+                (points_gdf_copy['bc'] == 0) | (points_gdf_copy['bc'] == 3))
 
         # Remove points within the distance threshold
         points_gdf_copy = points_gdf_copy[~idx]
@@ -208,54 +213,206 @@ class Preprocess(InOut):
 
         return gdf
 
-    # coding=utf-8
-    # This script computes soil textural class using the USDA Soil Triangle and soil parameters required for tRIBS
-    # using the Rosetta Python package.
-    # Manual modifications will need to be to adjust how rasters are read in if script is applied elsewhere,
-    # unit conversions, number of soil properties fed into Rosetta, and assumptions used.
-    # Josh Cederstrom October 2022
+    ### SOIL PRE-PROCESSING
+    def getSoil250(self, bbox, depths, soil_vars, stats, replace=False):
+        """
+        Retrieves soil data from ISRIC WCS service and saves it as GeoTIFFs and returns list of paths to downloaded files.
+
+        Args:
+            bbox (list): The bounding box coordinates in the format [x1, y1, x2, y2].
+            depths (list): List of soil depths to retrieve data for.
+            soil_vars (list): List of soil variables to retrieve.
+            stats (list): List of statistics to compute for each variable and depth.
+
+        Example:
+            bbox = [387198, 3882394, 412385, 3901885]  # x1,y1,x2,y2
+            depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
+            soil_vars = ['bdod', 'clay', 'sand', 'silt', 'wv1500', 'wv0033', 'wv0010'], see https://maps.isric.org/
+            stats = ['mean'], see prediciton quantiles at https://www.isric.org/explore/soilgrids/faq-soilgrids
+        """
+        epsg = self.geo['EPSG']
+
+        if epsg is None:
+            print("No EPSG code found. Please update model attribute .geo['EPSG'] with EPSG code.")
+            return
+
+        complete = False
+
+        match = re.search(r'EPSG:(\d+)', epsg)
+        if match:
+            epsg = match.group(1)
+
+        data_dir = 'sg250'
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+            print(f"Directory '{data_dir}' created.")
+
+        os.chdir(data_dir)
+
+        crs = f'urn:ogc:def:crs:EPSG::{epsg}'
+
+        files = []
+
+        print('Downloading data, this may take several minutes or more...')
+        for var in soil_vars:
+            wcs = WebCoverageService(f'http://maps.isric.org/mapserv?map=/map/{var}.map', version='1.0.0', timeout=300)
+            for depth in depths:
+
+                # for a given variable, depth, and stat write out a geotif
+                for stat in stats:
+                    soil_key = f'{var}_{depth}_{stat}'
+                    file = f'{soil_key}.tif'
+                    files.append(file)
+
+                    if (os.path.isfile(file) and replace == True) or not os.path.isfile(file):
+                        response = wcs.getCoverage(identifier=soil_key, crs=crs, bbox=bbox, resx=250, resy=250,
+                                                   format='GEOTIFF_INT16', timeout=120)
+                        with open(file, 'wb') as file:
+                            file.write(response.read())
+                        complete = True
+
+        if complete:
+            print('Download of SoilGrids250 data complete')
+        else:
+            print('No SoilGrids250 data was downloaded check inputs or set replace == False.')
+
+        os.chdir('..')
+        return files
+
+    @staticmethod
+    def fillnodata(files, overwrite=False, **kwargs):
+        """
+        Fills nodata gaps in raster files based on a maximum search distance.
+
+        Parameters:
+        files (list): List of paths to raster files.
+        overwrite (bool): If True, the original files will be overwritten with filled data. If False, new files with "_filled" suffix will be created.
+        **kwargs: Additional keyword arguments to be passed to rasterio.fill.fillnodata.
+
+        Note:
+        This function essentially wraps rasterio.fill.fillnodata.
+        """
+        for file_path in files:
+            with rasterio.open(file_path) as src:
+                data = src.read(1)
+                msk = src.read_masks(1)
+                filled_data = fill.fillnodata(data, mask=msk, **kwargs)
+                if overwrite:
+                    with rasterio.open(file_path, 'w', **src.profile) as dst:
+                        dst.write(filled_data, 1)
+                else:
+                    base_name, ext = os.path.splitext(file_path)
+                    filled_file_path = f"{base_name}_filled{ext}"
+                    with rasterio.open(filled_file_path, 'w', **src.profile) as dst:
+                        dst.write(filled_data, 1)
 
     # Compute Soil Texture Class
-    @staticmethod
-    def soiltexturalclass(sand, clay):
+    def create_soil_map(self, grid_input, output=None):
         """
-        Returns USDA soil textural class given percent sand and clay.
-        :param sand:
-        :param clay: Location to write input file to.
+        Parameters:
+        - grid_input (list of dict or str): If a dictionary list, keys are "grid_type" and "path" for each soil property.
+                                    Format of dictionary list follows:
+                                    [{'type':'sand', 'path':'path/to/grid'},
+                                    {'type':'clay', 'path':'path/to/grid'},
         """
-        silt = 100 - sand - clay
 
-        if sand + clay > 100 or sand < 0 or clay < 0:
-            raise ValueError('Inputs add up to more than 100% or are negative')
-        elif silt + 1.5 * clay < 15:
-            textural_class = 1  # sand
-        elif silt + 1.5 * clay >= 15 and silt + 2 * clay < 30:
-            textural_class = 2  # loamy sand
-        elif (clay >= 7 and clay < 20 and sand > 52 and silt + 2 * clay >= 30) or (
-                clay < 7 and silt < 50 and silt + 2 * clay >= 30):
-            textural_class = 3  # sandy loam
-        elif clay >= 7 and clay < 27 and silt >= 28 and silt < 50 and sand <= 52:
-            textural_class = 4  # loam
-        elif (silt >= 50 and clay >= 12 and clay < 27) or (silt >= 50 and silt < 80 and clay < 12):
-            textural_class = 5  # silt loam
-        elif silt >= 80 and clay < 12:
-            textural_class = 6  # silt
-        elif clay >= 20 and clay < 35 and silt < 28 and sand > 45:
-            textural_class = 7  # 'sandy clay loam'
-        elif clay >= 27 and clay < 40 and sand > 20 and sand <= 45:
-            textural_class = 8  # 'clay loam'
-        elif clay >= 27 and clay < 40 and sand <= 20:
-            textural_class = 9  # 'silty clay loam'
-        elif clay >= 35 and sand > 45:
-            textural_class = 10  # 'sandy clay'
-        elif clay >= 40 and silt >= 40:
-            textural_class = 11  # 'silty clay'
-        elif clay >= 40 > silt and sand <= 45:
-            textural_class = 12
-        else:
-            textural_class = 'na'
+        if isinstance(grid_input, str):
+            # Read configuration from the file
+            config = self.read_json(grid_input)
+            grids = config['grid_types']
+            output_file = config['output_files']
+        elif isinstance(grid_input, list):
+            # Use provided dictionary
+            grids = grid_input
+            output_file = output or ['soil_class.soi']
 
-        return textural_class
+        def soiltexturalclass(sand, clay):
+            """
+            Returns USDA soil textural class given percent sand and clay.
+            :param sand:
+            :param clay:
+            """
+
+            silt = 100 - sand - clay
+
+            if sand + clay > 100 or sand < 0 or clay < 0:
+                raise ValueError('Inputs add up to more than 100% or are negative')
+            elif silt + 1.5 * clay < 15:
+                textural_class = 1  # sand
+            elif silt + 1.5 * clay >= 15 and silt + 2 * clay < 30:
+                textural_class = 2  # loamy sand
+            elif (clay >= 7 and clay < 20 and sand > 52 and silt + 2 * clay >= 30) or (
+                    clay < 7 and silt < 50 and silt + 2 * clay >= 30):
+                textural_class = 3  # sandy loam
+            elif clay >= 7 and clay < 27 and silt >= 28 and silt < 50 and sand <= 52:
+                textural_class = 4  # loam
+            elif (silt >= 50 and clay >= 12 and clay < 27) or (silt >= 50 and silt < 80 and clay < 12):
+                textural_class = 5  # silt loam
+            elif silt >= 80 and clay < 12:
+                textural_class = 6  # silt
+            elif clay >= 20 and clay < 35 and silt < 28 and sand > 45:
+                textural_class = 7  # 'sandy clay loam'
+            elif clay >= 27 and clay < 40 and sand > 20 and sand <= 45:
+                textural_class = 8  # 'clay loam'
+            elif clay >= 27 and clay < 40 and sand <= 20:
+                textural_class = 9  # 'silty clay loam'
+            elif clay >= 35 and sand > 45:
+                textural_class = 10  # 'sandy clay'
+            elif clay >= 40 and silt >= 40:
+                textural_class = 11  # 'silty clay'
+            elif clay >= 40 > silt and sand <= 45:
+                textural_class = 12
+            else:
+                textural_class = 'na'
+
+            return textural_class
+
+        # Loop through specified file paths
+        texture_data = []
+
+        for cnt, g in enumerate(grids):
+            grid_type, path = g['type'], g['path']
+            print(f"Ingesting {grid_type} from: {path}")
+            geo_tiff = self.read_ascii(path)
+            array = geo_tiff['data']
+            size = array.shape
+
+            if cnt == 0:
+                texture_data = np.zeros((2, size[0], size[1]))
+
+            if grid_type == 'sand':
+                array = array / 1000 * 100  # convert SSC from g/kg to % SSC
+                texture_data[0, :, :] = array
+            elif grid_type == 'clay':
+                array = array / 1000 * 100  # convert SSC from g/kg to % SSC
+                texture_data[1, :, :] = array
+
+        soil_class = np.zeros((1, size[0], size[1]))
+
+        for i in range(0, size[0]):
+            for j in range(0, size[1]):
+                # Organize array for input into packag
+                data = [texture_data[x, i, j] for x in np.arange(0, 2)]
+                sand = data[0]
+                clay = data[1]
+                soil_class[0, i, j] = soiltexturalclass(sand, clay)
+
+        soi_raster = {'data': soil_class[0], 'profile': geo_tiff['profile']}
+        self.write_ascii(soi_raster, output_file)
+
+        soil_classification = {1: 'sand', 2: 'loamy sand', 3: 'sandy loam', 4: 'loam', 5: 'silt loam', 6: 'silt',
+                               7: 'sandy clay loam', 8: 'clay loam', 9: 'silty clay loam', 10: 'sandy clay',
+                               11: 'silty clay', 12: 'clay'}
+
+        classes = np.unique(soil_class[0])
+
+        filtered_classes = {}
+
+        for key in soil_classification.keys():
+            if key in classes:
+                filtered_classes[key] = soil_classification[key]
+
+        return filtered_classes
 
     def process_raw_soil(self, grid_input, output=None, ks_only=False):
         """
@@ -294,7 +451,8 @@ class Preprocess(InOut):
             grids = grid_input
             output_files = output or ['Ks.asc', 'theta_r.asc', 'theta_s.asc', 'psib.asc', 'm.asc']
         else:
-            print('Invalid input format. Provide either a dictionary or a path to a configuration file.')
+            print(
+                'Invalid input format. Provide either a list of dictionaries specifying type and path, or a path to a configuration file.')
             return
 
         # Check if each file specified in the dictionary or config exists
@@ -324,23 +482,23 @@ class Preprocess(InOut):
                 sg250_data = np.zeros((6, size[0], size[1]))
 
             # each z layer follows:[sa (%), si (%), cl (%), bd (g/cm3), th33, th1500]
-            if grid_type == 'sand_fraction':
+            if grid_type == 'sand':
                 array = array / 1000 * 100  # convert SSC from g/kg to % SSC
                 sg250_data[0, :, :] = array
-            elif grid_type == 'silt_fraction':
+            elif grid_type == 'silt':
                 array = array / 1000 * 100  # convert SSC from g/kg to % SSC
                 sg250_data[1, :, :] = array
-            elif grid_type == 'clay_fraction':
+            elif grid_type == 'clay':
                 array = array / 1000 * 100  # convert SSC from g/kg to % SSC
                 sg250_data[2, :, :] = array
-            elif grid_type == 'bulk_density':
+            elif grid_type == 'bdod':
                 array = array / 100  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[3, :, :] = array
-            elif grid_type == 'vwc_33':
+            elif grid_type == 'wv0033':
                 array = array / 1000  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[4, :, :] = array
-            elif grid_type == 'vwc_1500':
-                array = array / 1000 # convert bulk density from cg/cm3 to g/cm3
+            elif grid_type == 'wv1500':
+                array = array / 1000  # convert bulk density from cg/cm3 to g/cm3
                 sg250_data[5, :, :] = array
 
         profile = geo_tiff['profile']
@@ -416,7 +574,7 @@ class Preprocess(InOut):
             grids = grid_input
             output_file = output or ['f.asc']
         else:
-            print('Invalid input format. Provide either a dictionary or a path to a configuration file.')
+            print('Invalid input format. Provide either a list or a path to a configuration file.')
             return
 
         # Check if each file specified in the dictionary or config exists
@@ -461,11 +619,12 @@ class Preprocess(InOut):
         # Loop through raster's and compute soil properties using rosetta-soil package
         for i in range(0, size[0]):
             for j in range(0, size[1]):
-                if np.any(ks_data[i, j] == profile['nodata']):
+                y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
+
+                if np.any(y == profile['nodata']):
                     f_grid[i, j] = profile['nodata']
                     fcov[i, j] = profile['nodata']
                 else:
-                    y = np.array([ks_data[n, i, j] for n in np.arange(0, len(grids))])
 
                     try:
                         # ensure float
@@ -482,11 +641,11 @@ class Preprocess(InOut):
                     minf, maxf = 1E-7, k0 - 1E-5
                     minks = 1
 
-                    param, param_cov = curve_fit(decay, depth_vec, y, bounds = ([minf, maxf],[minks, k0]))
+                    param, param_cov = curve_fit(decay, depth_vec, y, bounds=([minf, maxf], [minks, k0]))
 
                     # Write Curve fitting results to grid
                     f_grid[i, j] = param[0]
                     fcov[i, j] = param_cov[0, 0]
 
         f_raster = {'data': f_grid, 'profile': profile}
-        self.write_ascii(f_raster, output_file[0])
+        self.write_ascii(f_raster, output_file)

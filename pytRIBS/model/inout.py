@@ -89,6 +89,8 @@ class InOut:
                 if "key_word" in subdict and "value" in subdict:
                     keyword = subdict["key_word"]
                     value = subdict["value"]
+                    if value is None:
+                        value = ""
                     output_file.write(f"{keyword}\n")
                     output_file.write(f"{value}\n\n")
 
@@ -234,7 +236,7 @@ class InOut:
     @staticmethod
     def read_met_station(file_path):
         # TODO add var for specifying Station ID and doc
-        df = pd.read_csv(file_path, header=0, sep='\s+')
+        df = pd.read_csv(file_path, header=0, sep=r'\s+')
         # convert year, month, day to datetime and drop columns
         df.rename(columns={'Y': 'year', 'M': 'month', 'D': 'day', 'H': 'hour'}, inplace=True)
         df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
@@ -361,7 +363,7 @@ class InOut:
             # Write station information
             for type in soil_list:
                 line = f"{type['ID']} {type['Ks']} {type['thetaS']} {type['thetaR']} {type['m']} {type['PsiB']} " \
-                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}"
+                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}\n"
                 file.write(line)
 
     def read_landuse_table(self, file_path=None):
@@ -534,6 +536,12 @@ class InOut:
         return raster
 
     @staticmethod
+    def read_json(file_path):
+        with open(file_path, 'r') as f:
+            input = json.load(f)
+        return input
+
+    @staticmethod
     def write_ascii(raster_dict, output_file_path):
         """
         Writes raster data and metadata from a dictionary to an ASCII raster file.
@@ -543,6 +551,11 @@ class InOut:
         # Extract data and metadata from the dictionary
         data = raster_dict['data']
         profile = raster_dict['profile']
+
+        # Remove unsupported creation options
+        unsupported_options = ['BLOCKXSIZE', 'BLOCKYSIZE', 'TILED', 'COMPRESS', 'INTERLEAVE', 'DX', 'DY']
+        for option in unsupported_options:
+            profile.pop(option, None)
 
         # Check if the driver is set to 'AAIGrid' (ASCII format)
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
@@ -555,15 +568,10 @@ class InOut:
                 nodata=-9999.0,  # or any other nodata value you want to use
             )
 
+
         # Replace nan values with nodata value
         data = np.where(np.isnan(data), profile['nodata'], data)
 
         # Write the data and metadata to the ASCII raster file
         with rasterio.open(output_file_path, 'w', **profile) as dst:
             dst.write(data, 1)
-
-    @staticmethod
-    def read_json(file_path):
-        with open(file_path, 'r') as f:
-            input = json.load(f)
-        return input

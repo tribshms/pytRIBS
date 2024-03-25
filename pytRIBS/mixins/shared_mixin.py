@@ -510,7 +510,6 @@ class SharedMixin:
 
             self.int_spatial_vars = temp[runtime]
 
-
         elif parallel_flag == 0:
             runtime = self.options["runtime"]["value"]
 
