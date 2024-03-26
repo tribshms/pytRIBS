@@ -347,7 +347,7 @@ class Preprocess(InOut):
             elif clay >= 7 and clay < 27 and silt >= 28 and silt < 50 and sand <= 52:
                 textural_class = 4  # loam
             elif (silt >= 50 and clay >= 12 and clay < 27) or (silt >= 50 and silt < 80 and clay < 12):
-                textural_class = 5  # silt loam
+                textural_class = 5 # silt loam
             elif silt >= 80 and clay < 12:
                 textural_class = 6  # silt
             elif clay >= 20 and clay < 35 and silt < 28 and sand > 45:
@@ -355,7 +355,7 @@ class Preprocess(InOut):
             elif clay >= 27 and clay < 40 and sand > 20 and sand <= 45:
                 textural_class = 8  # 'clay loam'
             elif clay >= 27 and clay < 40 and sand <= 20:
-                textural_class = 9  # 'silty clay loam'
+                textural_class = 9 # 'silty clay loam'
             elif clay >= 35 and sand > 45:
                 textural_class = 10  # 'sandy clay'
             elif clay >= 40 and silt >= 40:
@@ -387,7 +387,7 @@ class Preprocess(InOut):
                 array = array / 1000 * 100  # convert SSC from g/kg to % SSC
                 texture_data[1, :, :] = array
 
-        soil_class = np.zeros((1, size[0], size[1]))
+        soil_class = np.zeros((1, size[0], size[1]),dtype=int)
 
         for i in range(0, size[0]):
             for j in range(0, size[1]):
@@ -395,22 +395,26 @@ class Preprocess(InOut):
                 data = [texture_data[x, i, j] for x in np.arange(0, 2)]
                 sand = data[0]
                 clay = data[1]
-                soil_class[0, i, j] = soiltexturalclass(sand, clay)
+                soil_class[0, i, j] = int(soiltexturalclass(sand, clay))
 
-        soi_raster = {'data': soil_class[0], 'profile': geo_tiff['profile']}
-        self.write_ascii(soi_raster, output_file)
-
-        soil_classification = {1: 'sand', 2: 'loamy sand', 3: 'sandy loam', 4: 'loam', 5: 'silt loam', 6: 'silt',
-                               7: 'sandy clay loam', 8: 'clay loam', 9: 'silty clay loam', 10: 'sandy clay',
-                               11: 'silty clay', 12: 'clay'}
+        soil_classification = {1: 'sand', 2: 'loamy_sand', 3: 'sandy_loam', 4: 'loam', 5: 'silt_loam', 6: 'silt',
+                               7: 'sandy_clay_loam', 8: 'clay_loam', 9: 'silty_clay_loam', 10: 'sandy_clay',
+                               11: 'silty_clay', 12: 'clay'}
 
         classes = np.unique(soil_class[0])
 
         filtered_classes = {}
 
+        count = 1
         for key in soil_classification.keys():
             if key in classes:
-                filtered_classes[key] = soil_classification[key]
+                filtered_classes[count] = soil_classification[key]
+                soil_class[soil_class == key] = int(count)
+                count += 1
+
+        # Need to re-write soil map so that classes start from 1 and sequentially there after
+        soi_raster = {'data': soil_class[0], 'profile': geo_tiff['profile']}
+        self.write_ascii(soi_raster, output_file,dtype='int16')
 
         return filtered_classes
 

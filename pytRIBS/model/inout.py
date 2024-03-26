@@ -5,6 +5,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+import math
 from shapely.geometry import Point
 import json
 
@@ -362,8 +363,8 @@ class InOut:
 
             # Write station information
             for type in soil_list:
-                line = f"{type['ID']} {type['Ks']} {type['thetaS']} {type['thetaR']} {type['m']} {type['PsiB']} " \
-                       f" {type['f']} {type['As']} {type['Au']} {type['n']} {type['ks']} {type['Cs']}\n"
+                line = f"{type['ID']}   {type['Ks']}    {type['thetaS']}    {type['thetaR']}    {type['m']}    {type['PsiB']}    " \
+                       f"{type['f']}    {type['As']}    {type['Au']}    {type['n']}    {type['ks']}    {type['Cs']}\n"
                 file.write(line)
 
     def read_landuse_table(self, file_path=None):
@@ -516,6 +517,76 @@ class InOut:
             'Parameters': parameters
         }
 
+    # def write_grid_data_file(self, grid_type):
+    #     """
+    #     Write out the content of a specified Grid Data File (.gdf)
+    #     :param grid_type: string set to "weather", "soil", of "land", with each corresponding to HYDROMETGRID, SCGRID, LUGRID
+    #     :return: dictionary containg keys and content: "Number of Parameters","Latitude", "Longitude","GMT Time Zone", "Parameters" (a  list of dicts)
+    #     """
+    #
+    #     if grid_type == "weather":
+    #         option = self.options["hydrometgrid"]["value"]
+    #     elif grid_type == "soil":
+    #         option = self.options["scgrid"]["value"]
+    #     elif grid_type == "land":
+    #         option = self.options["lugrid"]["value"]
+    #
+    #     parameters = []
+    #
+    #     with open(option, 'r') as file:
+    #         num_parameters = int(file.readline().strip())
+    #         location_info = file.readline().strip().split()
+    #         latitude, longitude, gmt_timezone = location_info
+    #
+    #         variable_count = 0
+    #
+    #         for line in file:
+    #             parts = line.strip().split()
+    #             if len(parts) == 3:
+    #                 variable_name, raster_path, raster_extension = parts
+    #                 variable_count += 1
+    #
+    #                 path_components = raster_path.split(os.path.sep)
+    #
+    #                 # Exclude the last directory as its actually base name
+    #                 raster_path = os.path.sep.join(path_components[:-1])
+    #
+    #                 if raster_path != "NO_DATA":
+    #                     if not os.path.exists(raster_path):
+    #                         print(
+    #                             f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
+    #                         raster_path = None
+    #                     elif os.path.getsize(raster_path) == 0:
+    #                         print(
+    #                             f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
+    #                         raster_path = None
+    #                 elif raster_path == "NO_DATA":
+    #                     print(
+    #                         f"Warning: No rasters set for variable '{variable_name}'")
+    #                     raster_path = None
+    #
+    #                 parameters.append({
+    #                     'Variable Name': variable_name,
+    #                     'Raster Path': raster_path,
+    #                     'Raster Extension': raster_extension
+    #                 })
+    #             else:
+    #                 print(f"Skipping invalid line: {line}")
+    #
+    #         if variable_count > num_parameters:
+    #             print(
+    #                 "Warning: The number of variables exceeds the number of parameters. This variable has been reset "
+    #                 "in dictionary.")
+    #
+    #     return {
+    #         'Number of Parameters': variable_count,
+    #         'Latitude': latitude,
+    #         'Longitude': longitude,
+    #         'GMT Time Zone': gmt_timezone,
+    #         'Parameters': parameters
+    #     }
+    #
+
     @staticmethod
     def read_ascii(file_path):
         """
@@ -542,7 +613,7 @@ class InOut:
         return input
 
     @staticmethod
-    def write_ascii(raster_dict, output_file_path):
+    def write_ascii(raster_dict, output_file_path,dtype='float32'):
         """
         Writes raster data and metadata from a dictionary to an ASCII raster file.
         :param raster_dict: Dictionary containing 'data', 'profile', and additional metadata.
@@ -553,19 +624,22 @@ class InOut:
         profile = raster_dict['profile']
 
         # Remove unsupported creation options
-        unsupported_options = ['BLOCKXSIZE', 'BLOCKYSIZE', 'TILED', 'COMPRESS', 'INTERLEAVE', 'DX', 'DY']
+        unsupported_options = ['blockxsize', 'blockysize', 'tiled', 'interleave']
         for option in unsupported_options:
             profile.pop(option, None)
+
+        profile.update(dtype=dtype)
+
+
 
         # Check if the driver is set to 'AAIGrid' (ASCII format)
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
             # Update the profile for ASCII raster format
             profile.update(
-                dtype='float32',  # or any other appropriate data type
                 count=1,
                 compress=None,
                 driver='AAIGrid',  # ASCII Grid format
-                nodata=-9999.0,  # or any other nodata value you want to use
+                nodata=-9999.0,
             )
 
 
@@ -575,3 +649,28 @@ class InOut:
         # Write the data and metadata to the ASCII raster file
         with rasterio.open(output_file_path, 'w', **profile) as dst:
             dst.write(data, 1)
+
+        # ensure that header has the following format:
+        # ncols
+        # nrows
+        # xllcorner
+        # yllcorner
+        # cellsize
+        # NODATA_value
+
+        with open(output_file_path, 'r') as file:
+            lines = file.readlines()
+
+        updated_lines = []
+        replaced = False
+        for line in lines:
+            if line.startswith("dx") or line.startswith("dy"):
+                if replaced == False:
+                    updated_lines.append("cellsize"+ " " + str(math.ceil(float(line.split()[1]))) + "\n")
+                    replaced = True
+            else:
+                updated_lines.append(line)
+        # Write the updated content back to the file
+
+        with open(output_file_path, 'w') as file:
+            file.writelines(updated_lines)
