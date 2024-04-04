@@ -21,6 +21,7 @@ class InfileMixin:
         io    - input and output variables i.e. paths to input files or outputfiles
         restart    - suite of options and variables related to tRIBS restart feature
         parallel    - suite of options and variables related to tRIBS parallelization
+        mode - suite of options for forecast and stochastic mode
         deprecated    - deprecated or untested options
         """
         input_file = {
@@ -133,10 +134,10 @@ class InfileMixin:
                       "value": 0, "tags": ["opts"]},
         "optrunon": {"key_word": "OPTRUNON:", "describe": "Option for runon in overland flow paths", "value": 0,
                      "tags": ["opts"]},
-        "optreservoir": {"key_word": "OPTRESERVOIR:", "describe": None, "value": 0, "tags": ["opts"]},
-        # TODO update describe
-        "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": None, "value": 0, "tags": ["opts"]},
-        # TODO update describe
+        "optreservoir": {"key_word": "OPTRESERVOIR:", "describe": 'Option for leve pool routing: 0 off, 1 on', "value": 0, "tags": ["opts"]},
+
+        "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": "Option for soil input type: 0 soil table, 1 soil "
+                                                                "rasters", "value": 0, "tags": ["opts"]},
         "optspatial": {"key_word": "OPTSPATIAL:", "describe": "Enable dynamic spatial output", "value": 0,
                        "tags": ["opts"]},
         "optgroundwater": {"key_word": "OPTGROUNDWATER:", "describe": "Enable groundwater module", "value": 1,
@@ -196,20 +197,20 @@ class InfileMixin:
                          "value": None, "tags": ["io"]},
         "hydrometconvert": {"key_word": "HYDROMETCONVERT:",
                             "describe": "Hydrometeorological data conversion file (*.mdi)", "value": None,
-                            "tags": ["io", "deprecated"]},
+                            "tags": ["deprecated"]},
         "hydrometbasename": {"key_word": "HYDROMETBASENAME:",
                              "describe": "Hydrometeorological data BASE name (*.mdf)", "value": None,
                              "tags": ["io"]},
         "gaugestations": {"key_word": "GAUGESTATIONS:", "describe": " Rain Gauge station file (*.sdf)",
                           "value": None, "tags": ["io"]},
         "gaugeconvert": {"key_word": "GAUGECONVERT:", "describe": "Rain Gauge data conversion file (*.mdi)",
-                         "value": None, "tags": ["io", "deprecated"]},
+                         "value": None, "tags": ["deprecated"]},
         "gaugebasename": {"key_word": "GAUGEBASENAME:", "describe": " Rain Gauge data BASE name (*.mdf)",
                           "value": None, "tags": ["io"]},
         "outhydroextension": {"key_word": "OUTHYDROEXTENSION:", "describe": "Extension for hydrograph output",
                               "value": "mrf", "tags": ["io"]},
         "ribshydoutput": {"key_word": "RIBSHYDOUTPUT:", "describe": "compatibility with RIBS User Interphase",
-                          "value": 0, "tags": ["io", "deprecated"]},
+                          "value": 0, "tags": ["deprecated"]},
         "nodeoutputlist": {"key_word": "NODEOUTPUTLIST:",
                            "describe": "Filename with Nodes for Dynamic Output (*.nol)", "value": None,
                            "tags": ["io"]},
@@ -224,39 +225,39 @@ class InfileMixin:
         "outhydrofilename": {"key_word": "OUTHYDROFILENAME:", "describe": "Base name for hydrograph output",
                              "value": None, "tags": ["io"]},
         "forecastmode": {"key_word": "FORECASTMODE:", "describe": "Rainfall Forecasting Mode Option", "value": 0,
-                         "tags": ["opts"]},
+                         "tags": ["mode"]},
         # TODO need to update model mode descriptions
         "forecasttime": {"key_word": "FORECASTTIME:", "describe": "Forecast Time (hours from start)", "value": 0,
-                         "tags": ["time"]},
+                         "tags": ["mode"]},
         "forecastleadtime": {"key_word": "FORECASTLEADTIME:", "describe": "Forecast Lead Time (hours) ",
-                             "value": 0, "tags": ["time"]},
+                             "value": 0, "tags": ["mode"]},
         "forecastlength": {"key_word": "FORECASTLENGTH:", "describe": "Forecast Window Length (hours)", "value": 0,
-                           "tags": ["time"]},
+                           "tags": ["mode"]},
         "forecastfile": {"key_word": "FORECASTFILE:", "describe": "Base name of the radar QPF grids",
-                         "value": None, "tags": ["io"]},
+                         "value": None, "tags": ["mode"]},
         "climatology": {"key_word": "CLIMATOLOGY:", "describe": "Rainfall climatology (mm/hr)", "value": 0,
-                        "tags": ["physical"]},
+                        "tags": ["mode"]},
         "raindistribution": {"key_word": "RAINDISTRIBUTION:", "describe": "Distributed or MAP radar rainfall",
-                             "value": 0, "tags": ["opts"]},
+                             "value": 0, "tags": ["mode"]},
         "stochasticmode": {"key_word": "STOCHASTICMODE:", "describe": "Stochastic Climate Mode Option", "value": 0,
-                           "tags": ["opts"]},
+                           "tags": ["mode"]},
         "pmean": {"key_word": "PMEAN:", "describe": "Mean rainfall intensity (mm/hr)	", "value": 0,
-                  "tags": ["physical"]},
+                  "tags": ["mode"]},
         "stdur": {"key_word": "STDUR:", "describe": "Mean storm duration (hours)", "value": 0,
-                  "tags": ["physical"]},
+                  "tags": ["mode"]},
         "istdur": {"key_word": "ISTDUR:", "describe": "Mean time interval between storms (hours)", "value": 0,
-                   "tags": ["physical"]},
-        "seed": {"key_word": "SEED:", "describe": "Random seed", "value": 0, "tags": ["physical"]},
+                   "tags": ["mode"]},
+        "seed": {"key_word": "SEED:", "describe": "Random seed", "value": 0, "tags": ["mode"]},
         "period": {"key_word": "PERIOD:", "describe": "Period of variation (hours)", "value": 0,
-                   "tags": ["physical"]},
+                   "tags": ["mode"]},
         "maxpmean": {"key_word": "MAXPMEAN:", "describe": "Maximum value of mean rainfall intensity (mm/hr)",
-                     "value": 0, "tags": ["physical"]},
+                     "value": 0, "tags": ["mode"]},
         "maxstdurmn": {"key_word": "MAXSTDURMN:", "describe": "Maximum value of mean storm duration (hours)",
-                       "value": 0, "tags": ["physical"]},
+                       "value": 0, "tags": ["mode"]},
         "maxistdurmn": {"key_word": "MAXISTDURMN:", "describe": "Maximum value of mean interstorm period (hours)",
-                        "value": 0, "tags": ["physical"]},
+                        "value": 0, "tags": ["mode"]},
         "weathertablename": {"key_word": "WEATHERTABLENAME:", "describe": "File with Stochastic Weather Table",
-                             "value": None, "tags": ["io"]},
+                             "value": None, "tags": ["mode"]},
         "restartmode": {"key_word": "RESTARTMODE:", "describe": "Restart Mode Option\n" + \
                                                                 "0 No reading or writing of restart\n" + \
                                                                 "1 Write files (only for initial runs)\n" + \
@@ -266,20 +267,20 @@ class InfileMixin:
         "restartintrvl": {"key_word": "RESTARTINTRVL:", "describe": "Time set for restart output (hours)",
                           "value": None, "tags": ["restart"]},
         "restartdir": {"key_word": "RESTARTDIR:", "describe": "Path of directory for restart output",
-                       "value": None, "tags": ["restart", "io"]},
+                       "value": None, "tags": ["restart"]},
         "restartfile": {"key_word": "RESTARTFILE:", "describe": "Actual file to restart a run", "value": None,
-                        "tags": ["restart", "io"]},
+                        "tags": ["restart"]},
         "parallelmode": {"key_word": "PARALLELMODE:", "describe": "Parallel or Serial Mode Option\n" + \
                                                                   "0  Run in serial mode\n" + \
                                                                   "1  Run in parallel mode",
-                         "value": 0, "tags": ["parallel", "opts"]},
+                         "value": 0, "tags": ["parallel"]},
         "graphoption": {"key_word": "GRAPHOPTION:", "describe": "Graph File Type Option\n" + \
                                                                 "0  Default partitioning of the graph\n" + \
                                                                 "1  Reach-based partitioning\n" + \
                                                                 "2  Inlet/outlet-based partitioning", "value": 0,
-                        "tags": ["parallel", "opts"]},
+                        "tags": ["parallel"]},
         "graphfile": {"key_word": "GRAPHFILE:", "describe": "Reach connectivity filename (graph file option 1,2)",
-                      "value": None, "tags": ["parallel", "io"]},
+                      "value": None, "tags": ["parallel"]},
         "optviz": {"key_word": "OPTVIZ:", "describe": "Option to write binary output files for visualization\n" + \
                                                       "0  Do NOT write binary output files for viz\n" + \
                                                       "1  Write binary output files for viz", "value": 0,
