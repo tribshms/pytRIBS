@@ -70,30 +70,86 @@ class InOut:
                 z, bc = row['elevation'], int(row['bc'])
                 file.write(f"{x} {y} {z} {bc}\n")
 
-    def write_input_file(self, output_file_path):
+    def write_input_file(self, output_file_path, detailed=False):
         """
         Writes .in file for tRIBS model simulation.
         :param self:
         :param output_file_path: Location to write input file to.
+        :param detailed: Option to print input file with option descriptions and related info.
         """
-        with open(output_file_path, 'w') as output_file:
+        if detailed:
+            tags = ['time', 'mesh', 'flow', 'hydro', 'spatial', 'meterological', 'output', 'forecast', 'stochastic',
+                    'restart', 'parallel']
+            headers = {'time': 'Time Variables', 'mesh': 'Mesh Options', 'flow': 'Routing Variables',
+                       'hydro': 'Hydrologic Processes',
+                       'spatial': 'Spatial Data Inputs', 'meterological': 'Meterological Options and Data',
+                       'output': 'Model Output Paths and Options',
+                       'forecast': 'Forecast Mode', 'stochastic': 'Stochastic Mode', 'restart': 'Restart Mode',
+                       'parallel': 'Parallel Mode'}
+
+            meta = "This is a template input file for tRIBS 5.2.0. The file is divided in sections mirroring documentation\n" + \
+                   "found at: https://tribshms.readthedocs.io/en/latest/man/Model%20Input%20File.html#input-file-options\n" + \
+                   "Some values are already provided in the line following the keyword, where keywords are shown in all caps.\n" + \
+                   "Where values are not provided are marked by the string \"Update!\". Following the value is a short description of \n" + \
+                   "what the keyword does, alongside available options. Note: only values required by given a option must be specified.\n\n"
 
             current_datetime = datetime.now()
             current_user = getpass.getuser()
 
             formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
 
-            output_file.write(f"Created by: {current_user}\n")
-            output_file.write(f"On: {formatted_datetime}\n\n")
+            with open( output_file_path, 'w') as file:
 
-            for key, subdict in self.options.items():
-                if "key_word" in subdict and "value" in subdict:
-                    keyword = subdict["key_word"]
-                    value = subdict["value"]
-                    if value is None:
-                        value = ""
-                    output_file.write(f"{keyword}\n")
-                    output_file.write(f"{value}\n\n")
+                file.write(f"Created by: {current_user}\n")
+                file.write(f"On: {formatted_datetime}\n\n")
+
+                string = 'Input File Template for tRIBS Version 5.2'
+                underline = '=' * len(string)
+                file.write(f'{underline}\n{string}\n{underline}\n\n')
+                file.write(meta)
+
+                for tag in tags:
+                    underline = '=' * len(f'Section: {headers[tag]}')
+                    file.write(f'{underline}\nSection: {headers[tag]}\n{underline}\n\n')
+                    result = [item for item in self.options.values() if
+                              any(tag in _tag for _tag in item.get("tags", []))]
+
+                    for dictionary in result:
+                        keyword = dictionary['key_word']
+                        file.write(f'{keyword}\n')
+                        val = dictionary['value']
+                        if val is not None:
+                            file.write(f"{dictionary['value']}\n\n")
+                        else:
+                            file.write(f"Update!\n\n")
+
+                        description = dictionary['describe']
+                        if description is not None:
+                            file.write(f"Description:\n{description}\n")
+                        else:
+                            file.write(f"None\n")
+                        file.write(f" \n")
+        else:
+            with open(output_file_path, 'w') as output_file:
+
+                current_datetime = datetime.now()
+                current_user = getpass.getuser()
+
+                formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
+
+                output_file.write(f"Created by: {current_user}\n")
+                output_file.write(f"On: {formatted_datetime}\n\n")
+
+                for key, subdict in self.options.items():
+                    if "key_word" in subdict and "value" in subdict:
+                        keyword = subdict["key_word"]
+                        value = subdict["value"]
+                        if value is None:
+                            value = ""
+                        output_file.write(f"{keyword}\n")
+                        output_file.write(f"{value}\n\n")
+
+
 
     def read_precip_sdf(self, file_path=None):
         """

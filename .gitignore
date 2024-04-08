@@ -2,7 +2,7 @@
 .DS_Store
 __pycache__
 debug.py
-scratch/*
+pytRIBS/scratch/*
 scratch/HJ_BenchMark/results/*
 scratch/HJ_BenchMark/src/*
 scratch/HJ_BenchMark/build/
