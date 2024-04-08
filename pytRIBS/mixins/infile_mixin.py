@@ -124,6 +124,9 @@ class InfileMixin:
                                                                     "0  Constant (previous) values between land cover\n" + \
                                                                     "1  Linear interpolation between land cover",
                             "value": 1, "tags": ["hydro"]},
+            "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": "Option for soil input type: 0 soil table, 1 soil "
+                                                                    "rasters\n See SCGRID, SOILTABLENAME, and SOILMAPNAME",
+                            "value": 0, "tags": ["hydro"]},
             "gfluxoption": {"key_word": "GFLUXOPTION:", "describe": "Option for ground heat flux\n" + \
                                                                     "0  Inactive ground heat flux\n" + \
                                                                     "1  Temperature gradient method\n" + \
@@ -134,19 +137,24 @@ class InfileMixin:
                                                                   "1 Spatial grid of bedrock depth\n"
                                                                   "See DEPTHTOBEDROCK and BEDROCKFILE\n", "value": 0,
                            "tags": ["hydro"]},
+            "optgroundwater": {"key_word": "OPTGROUNDWATER","describe": "Option for groundwater module, 0 off, 1 on",
+                                "value": 1, "tags": ['hydro']},
+
             "optgwfile": {"key_word": "OPTGWFILE:", "describe": "Option for groundwater initial file\n" + \
                                                                 "0 Resample ASCII grid file in GWATERFILE\n" + \
                                                                 "1 Read in Voronoi polygon file with GW levels",
                           "value": 0, "tags": ["hydro"]},
+
             "optrunon": {"key_word": "OPTRUNON:", "describe": "Option for runon in overland flow paths [IN DEVELOPMENT]: 0 off, 1 on", "value": 0,
                          "tags": ["hydro"]},
             "optreservoir": {"key_word": "OPTRESERVOIR:", "describe": 'Option for leve pool routing: 0 off, 1 on',
                              "value": 0, "tags": ["hydro"]},
-            "optsoiltype": {"key_word": "OPTSOILTYPE:", "describe": "Option for soil input type: 0 soil table, 1 soil "
-                                                                    "rasters\n See SCGRID, SOILTABLENAME, and SOILMAPNAME",
-                                                                    "value": 0, "tags": ["hydro"]},
-            "optgroundwater": {"key_word": "OPTGROUNDWATER:", "describe": "Enable groundwater module: 0 off, 1 on", "value": 1,
-                               "tags": ["hydro"]},
+            ### added
+            "respolygonid": {"key_word": "RESPOLYGONID:", "describe": "Path to file of node IDs representing reservoirs",
+                             "value":None, "tags": ["hydro"]},
+            "resdata": {"key_word": "RESDATA:", "describe": "Path to file of elevation-discharge-storage information for each type of reservoir",
+                        "value":None,"tags": ["hydro"]},
+
             "optsnow": {"key_word": "OPTSNOW:", "describe": "Enable single layer snow module : 0 off, 1 on", "value": 1,
                         "tags": ["hydro"]},
             "minsntemp": {"key_word": "MINSNTEMP:", "describe": "Minimum snow temperature", "value": -50.0,
