@@ -501,7 +501,7 @@ class InOut:
             for type in landuse_list:
                 line = f"{str(type['ID'])} {str(type['a'])} {str(type['b1'])} {str(type['P'])} {str(type['S'])} {str(type['K'])} " \
                        f" {str(type['b2'])} {str(type['Al'])} {str(type['h'])} {str(type['Kt'])} {str(type['Rs'])} {str(type['V'])}" \
-                       f" {str(type['LAI'])} {str(type['theta*_s'])} {str(type['theta*_t'])}"
+                       f" {str(type['LAI'])} {str(type['theta*_s'])} {str(type['theta*_t'])}\n"
                 file.write(line)
 
     def read_grid_data_file(self, grid_type):
