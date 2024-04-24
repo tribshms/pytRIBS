@@ -372,7 +372,7 @@ class InOut:
         param_standard = 12
 
         if num_params != param_standard:
-            print(f"The number parameters in {file_path} do not conform with stand .sdt format.")
+            print(f"The number parameters in {file_path} do not conform with standard soil .sdt format.")
             return
 
         for l in lines:
@@ -382,17 +382,17 @@ class InOut:
                 _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s = soil_info
                 station = {
                     "ID": _id,
-                    "Ks": float(ks),
-                    "thetaS": float(theta_s),
-                    "thetaR": float(theta_r),
-                    "m": float(m),
-                    "PsiB": float(psi_b),
-                    "f": float(f),
-                    "As": float(a_s),
-                    "Au": float(a_u),
-                    "n": float(n),
-                    "ks": float(_ks),
-                    "Cs": float(c_s)
+                    "Ks": ks,
+                    "thetaS": theta_s,
+                    "thetaR": theta_r,
+                    "m": m,
+                    "PsiB": psi_b,
+                    "f": f,
+                    "As": a_s,
+                    "Au": a_u,
+                    "n": n,
+                    "ks": _ks,
+                    "Cs": c_s
                 }
                 soil_list.append(station)
 
@@ -449,7 +449,7 @@ class InOut:
         param_standard = 15
 
         if num_params != param_standard:
-            print(f"The number parameters in {file_path} do not conform with stand .sdt format.")
+            print(f"The number parameters in {file_path} do not conform with standard landuse .sdt format.")
             return
 
         for l in lines:
@@ -459,20 +459,20 @@ class InOut:
                 _id, a, b_1, p, s, k, b_2, al, h, kt, rs, v, lai, tstar_s, tstar_t = land_info
                 station = {
                     "ID": _id,
-                    "a": float(a),
-                    "b1": float(b_1),
-                    "P": float(p),
-                    "S": float(s),
-                    "K": float(k),
-                    "b2": float(b_2),
-                    "Al": float(al),
-                    "h": float(h),
-                    "Kt": float(kt),
-                    "Rs": float(rs),
-                    "V": float(v),
-                    "LAI": float(lai),
-                    "theta*_s": float(tstar_s),
-                    "theta*_t": float(tstar_t)
+                    "a": a,
+                    "b1": b_1,
+                    "P": p,
+                    "S": s,
+                    "K": k,
+                    "b2": b_2,
+                    "Al": al,
+                    "h": h,
+                    "Kt": kt,
+                    "Rs": rs,
+                    "V": v,
+                    "LAI": lai,
+                    "theta*_s": tstar_s,
+                    "theta*_t": tstar_t
                 }
                 landuse_list.append(station)
 
