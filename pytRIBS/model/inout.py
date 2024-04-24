@@ -419,8 +419,8 @@ class InOut:
 
             # Write station information
             for type in soil_list:
-                line = f"{type['ID']}   {type['Ks']}    {type['thetaS']}    {type['thetaR']}    {type['m']}    {type['PsiB']}    " \
-                       f"{type['f']}    {type['As']}    {type['Au']}    {type['n']}    {type['ks']}    {type['Cs']}\n"
+                line = f"{str(type['ID'])}   {str(type['Ks'])}    {str(type['thetaS'])}    {str(type['thetaR'])}    {str(type['m'])}    {str(type['PsiB'])}    " \
+                       f"{str(type['f'])}    {str(type['As'])}    {str(type['Au'])}    {str(type['n'])}    {str(type['ks'])}    {str(type['Cs'])}\n"
                 file.write(line)
 
     def read_landuse_table(self, file_path=None):
@@ -499,9 +499,9 @@ class InOut:
 
             # Write station information
             for type in landuse_list:
-                line = f"{type['ID']} {type['a']} {type['b1']} {type['P']} {type['S']} {type['K']} " \
-                       f" {type['b2']} {type['Al']} {type['h']} {type['Kt']} {type['Rs']} {type['V']}" \
-                       f" {type['LAI']} {type['theta*_s']} {type['theta*_t']}"
+                line = f"{str(type['ID'])} {str(type['a'])} {str(type['b1'])} {str(type['P'])} {str(type['S'])} {str(type['K'])} " \
+                       f" {str(type['b2'])} {str(type['Al'])} {str(type['h'])} {str(type['Kt'])} {str(type['Rs'])} {str(type['V'])}" \
+                       f" {str(type['LAI'])} {str(type['theta*_s'])} {str(type['theta*_t'])}"
                 file.write(line)
 
     def read_grid_data_file(self, grid_type):
