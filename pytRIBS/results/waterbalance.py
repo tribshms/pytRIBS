@@ -31,14 +31,7 @@ class WaterBalance:
     
         for n in nodes:
             n = int(n)
-    
-            if isinstance(self.element[n], dict):
-                data = self.element[n]['pixel']  # waterbalance calcs have already been run
-            else:
-                data = self.element[n]
-    
-    
-            waterbalance = self._run_element_water_balance(self, n, method)
+            waterbalance = self._run_element_water_balance(n, method)
             self.element[n]["waterbalance"] = waterbalance
     
     
