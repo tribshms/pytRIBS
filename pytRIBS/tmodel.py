@@ -49,7 +49,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         # attributes
         self.options = self.create_input_file()  # input options for tRIBS model run
         self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
-        self.area = None
+        #self.area = None
 
     # SIMULATION METHODS
     def __getattr__(self, name):
