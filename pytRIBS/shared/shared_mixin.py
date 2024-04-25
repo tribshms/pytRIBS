@@ -10,6 +10,10 @@ from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 
+class GeoMixin:
+    def __init__(self):
+        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+
 
 class SharedMixin:
     """
