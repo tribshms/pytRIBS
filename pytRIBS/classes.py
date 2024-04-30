@@ -1,20 +1,18 @@
 # system packages
-import glob
-import os
-import re
 
 # external packages
-import numpy as np
-import pandas as pd
 
 # pytRIBS
-from pytRIBS.model.aux import Aux
+from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
 from pytRIBS.shared.infile_mixin import InfileMixin
 from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
+
+#preprocessing componets
+from pytRIBS.soil.soil import _Soil
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
     """
@@ -102,7 +100,7 @@ class Results(InfileMixin, SharedMixin, WaterBalance, Read):
 
         self.get_invariant_properties()  # shared
 
-class Soil:
+class Soil(_Soil):
     """
     A tRIBS Soil Class.
 
@@ -120,7 +118,7 @@ class Soil:
         self.soil_class_map = options['soilmapname']
         self.soil_table = options['soiltablename']
         self.soil_gdf = options['scgrid']
-        self.soil_opts = {options['optsoiltype'], options['optgroundwater'], options['optgwfile'], options['optbedrock']}
+        self.soil_opts = [options['optsoiltype'], options['optgroundwater'], options['optgwfile'], options['optbedrock']]
         self.bed_rock_map = options['bedrockfile']
         self.initial_gw_map = options['gwaterfile']
 

@@ -2,8 +2,38 @@ import subprocess
 import os
 import shutil
 import pandas as pd
+import rasterio
+from rasterio import fill
+
 
 class Aux:
+
+    @staticmethod
+    def fillnodata(files, overwrite=False, **kwargs):
+        """
+        Fills nodata gaps in raster files based on a maximum search distance.
+
+        Parameters:
+        files (list): List of paths to raster files.
+        overwrite (bool): If True, the original files will be overwritten with filled data. If False, new files with "_filled" suffix will be created.
+        **kwargs: Additional keyword arguments to be passed to rasterio.fill.fillnodata.
+
+        Note:
+        This function essentially wraps rasterio.fill.fillnodata.
+        """
+        for file_path in files:
+            with rasterio.open(file_path) as src:
+                data = src.read(1)
+                msk = src.read_masks(1)
+                filled_data = fill.fillnodata(data, mask=msk, **kwargs)
+                if overwrite:
+                    with rasterio.open(file_path, 'w', **src.profile) as dst:
+                        dst.write(filled_data, 1)
+                else:
+                    base_name, ext = os.path.splitext(file_path)
+                    filled_file_path = f"{base_name}_filled{ext}"
+                    with rasterio.open(filled_file_path, 'w', **src.profile) as dst:
+                        dst.write(filled_data, 1)
     @staticmethod
     def convert_to_datetime(starting_date):
         """
