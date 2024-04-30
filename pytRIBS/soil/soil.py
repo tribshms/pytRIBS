@@ -10,18 +10,21 @@ from pytRIBS.shared.aux import Aux
 
 
 class _Soil:
-
     # Assigning references to the methods
     write_ascii = InOut.write_ascii
     read_ascii = InOut.read_ascii
     read_json = InOut.read_json
-    fillnodata = Aux.fillnodata
 
-    def read_soil_table(self, file_path=None):
+    @staticmethod
+    def fillnodata(files,overwrite=False, **kwargs):
+        Aux.fillnodata(files,overwrite=overwrite, **kwargs)
+
+    def read_soil_table(self, textures=False, file_path=None):
         """
         Soil Reclassification Table Structure (*.sdt)
         #Types #Params
         ID Ks thetaS thetaR m PsiB f As Au n ks Cs
+        an o
         """
         if file_path is None:
             file_path = self.options["soiltablename"]["value"]
@@ -39,6 +42,9 @@ class _Soil:
         num_types, num_params = map(int, metadata.strip().split())
         param_standard = 12
 
+        if textures:
+            param_standard += 1
+
         if num_params != param_standard:
             print(f"The number parameters in {file_path} do not conform with standard soil .sdt format.")
             return
@@ -47,29 +53,48 @@ class _Soil:
             soil_info = l.strip().split()
 
             if len(soil_info) == param_standard:
-                _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s = soil_info
-                station = {
-                    "ID": _id,
-                    "Ks": ks,
-                    "thetaS": theta_s,
-                    "thetaR": theta_r,
-                    "m": m,
-                    "PsiB": psi_b,
-                    "f": f,
-                    "As": a_s,
-                    "Au": a_u,
-                    "n": n,
-                    "ks": _ks,
-                    "Cs": c_s
-                }
+                if textures:
+                    _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s, textures = soil_info
+                    station = {
+                        "ID": _id,
+                        "Ks": ks,
+                        "thetaS": theta_s,
+                        "thetaR": theta_r,
+                        "m": m,
+                        "PsiB": psi_b,
+                        "f": f,
+                        "As": a_s,
+                        "Au": a_u,
+                        "n": n,
+                        "ks": _ks,
+                        "Cs": c_s,
+                        "Texture": textures
+                    }
+                else:
+                    _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s = soil_info
+                    station = {
+                        "ID": _id,
+                        "Ks": ks,
+                        "thetaS": theta_s,
+                        "thetaR": theta_r,
+                        "m": m,
+                        "PsiB": psi_b,
+                        "f": f,
+                        "As": a_s,
+                        "Au": a_u,
+                        "n": n,
+                        "ks": _ks,
+                        "Cs": c_s
+                    }
+
                 soil_list.append(station)
 
         if len(soil_list) != num_types:
             print("Error: Number of soil types does not match the specified count.")
-
         return soil_list
+
     @staticmethod
-    def write_soil_table(soil_list,file_path):
+    def write_soil_table(soil_list, file_path, textures=False):
         """
         Writes out Soil Reclassification Table(*.sdt) file with the following format:
         #Types #Params
@@ -80,6 +105,9 @@ class _Soil:
         """
         param_standard = 12
 
+        if textures:
+            param_standard += 1
+
         with open(file_path, 'w') as file:
             # Write metadata line
             metadata = f"{len(soil_list)} {param_standard}\n"
@@ -87,8 +115,14 @@ class _Soil:
 
             # Write station information
             for type in soil_list:
-                line = f"{str(type['ID'])}   {str(type['Ks'])}    {str(type['thetaS'])}    {str(type['thetaR'])}    {str(type['m'])}    {str(type['PsiB'])}    " \
-                       f"{str(type['f'])}    {str(type['As'])}    {str(type['Au'])}    {str(type['n'])}    {str(type['ks'])}    {str(type['Cs'])}\n"
+
+                if textures:
+                    line = f"{str(type['ID'])}   {str(type['Ks'])}    {str(type['thetaS'])}    {str(type['thetaR'])}    {str(type['m'])}    {str(type['PsiB'])}    " \
+                           f"{str(type['f'])}    {str(type['As'])}    {str(type['Au'])}    {str(type['n'])}    {str(type['ks'])}    {str(type['Cs'])} {str(type['Texture'])}\n"
+                else:
+                    line = f"{str(type['ID'])}   {str(type['Ks'])}    {str(type['thetaS'])}    {str(type['thetaR'])}    {str(type['m'])}    {str(type['PsiB'])}    " \
+                           f"{str(type['f'])}    {str(type['As'])}    {str(type['Au'])}    {str(type['n'])}    {str(type['ks'])}    {str(type['Cs'])}\n"
+
                 file.write(line)
 
     def get_soil_grids(self, bbox, depths, soil_vars, stats, replace=False):
@@ -261,11 +295,35 @@ class _Soil:
                 soil_class[soil_class == key] = int(count)
                 count += 1
 
-        # Need to re-write soil map so that classes start from 1 and sequentially there after
+        # Need to re-write soil map so that classes start from 1 and sequentially thereafter
         soi_raster = {'data': soil_class[0], 'profile': geo_tiff['profile']}
         self.write_ascii(soi_raster, output_file, dtype='int16')
 
-        return filtered_classes
+        # create soil table with  nodata for rasyes
+        parameters = ['ID', 'Ks', 'thetaS', 'thetaR', 'm', 'PsiB', 'f', 'As', 'Au', 'n', 'ks', 'Cs', 'Texture']
+        soil_list = []
+        count = 1
+        nodata = 9999.99
+
+        for key, item in filtered_classes.items():
+            d = {}
+            for p in parameters:
+                # reset ID
+                if p == 'ID':
+                    d.update({p: count})
+
+                # give textural class that need to be updated via user or calibration
+                elif p in (['As', 'Au', 'Cs', 'ks', 'Texture']):
+                    d.update({p: item})
+
+                # set grid data to nodata value in table
+                else:
+                    d.update({p: nodata})
+            count += 1
+
+            soil_list.append(d)
+
+        return soil_list
 
     def process_raw_soil(self, grid_input, output=None, ks_only=False):
         """
