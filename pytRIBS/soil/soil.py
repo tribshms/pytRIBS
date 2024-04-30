@@ -16,8 +16,22 @@ class _Soil:
     read_json = InOut.read_json
 
     @staticmethod
-    def fillnodata(files,overwrite=False, **kwargs):
-        Aux.fillnodata(files,overwrite=overwrite, **kwargs)
+    def fillnodata(files, overwrite=False, **kwargs):
+        Aux.fillnodata(files, overwrite=overwrite, **kwargs)
+
+    @staticmethod
+    def write_ascii(files, overwrite=False, **kwargs):
+        InOut.write_ascii(files, overwrite=overwrite, **kwargs)
+
+    @staticmethod
+    def read_ascii(file_path):
+        raster = InOut.read_ascii(file_path)
+        return raster
+
+    @staticmethod
+    def read_json(raster_dict, output_file_path, dtype='float32'):
+        input = InOut.read_json(raster_dict, output_file_path, dtype)
+        return input
 
     def read_soil_table(self, textures=False, file_path=None):
         """
