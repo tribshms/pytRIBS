@@ -11,17 +11,14 @@ from pytRIBS.shared.aux import Aux
 
 class _Soil:
     # Assigning references to the methods
-    write_ascii = InOut.write_ascii
-    read_ascii = InOut.read_ascii
-    read_json = InOut.read_json
 
     @staticmethod
     def fillnodata(files, overwrite=False, **kwargs):
         Aux.fillnodata(files, overwrite=overwrite, **kwargs)
 
     @staticmethod
-    def write_ascii(files, overwrite=False, **kwargs):
-        InOut.write_ascii(files, overwrite=overwrite, **kwargs)
+    def write_ascii(raster_dict, output_file_path,dtype='float32'):
+        InOut.write_ascii(raster_dict, output_file_path, dtype)
 
     @staticmethod
     def read_ascii(file_path):
@@ -39,12 +36,14 @@ class _Soil:
         #Types #Params
         ID Ks thetaS thetaR m PsiB f As Au n ks Cs
         an o
+        :param textures: Optional True/False for writing texture classes to the .sdt file.
+        :param file_path: Specify file_path to soil table not assigned to the .
         """
         if file_path is None:
-            file_path = self.options["soiltablename"]["value"]
+            file_path = self.soil_table["value"]
 
             if file_path is None:
-                print(self.options["soiltablename"]["key_word"] + "is not specified.")
+                print(self.soil_table["key_word"] + "is not specified.")
                 return None
 
         soil_list = []
@@ -116,6 +115,8 @@ class _Soil:
 
         :param soil_list: List of dictionaries containing soil information specified by .sdt structure above.
         :param file_path: Path to save *.sdt file.
+        :param textures: Optional True/False for writing texture classes to the .sdt file.
+
         """
         param_standard = 12
 
@@ -206,6 +207,9 @@ class _Soil:
 
     def create_soil_map(self, grid_input, output=None):
         """
+        Writes out an ascii file with soil classes assigned by soil texture classification and returns a soil classification table
+        with associated parameters.
+
         Parameters:
         - grid_input (list of dict or str): If a dictionary list, keys are "grid_type" and "path" for each soil property.
                                     Format of dictionary list follows:
@@ -318,6 +322,7 @@ class _Soil:
         soil_list = []
         count = 1
         nodata = 9999.99
+        ndefined = 'undefined'
 
         for key, item in filtered_classes.items():
             d = {}
@@ -325,10 +330,11 @@ class _Soil:
                 # reset ID
                 if p == 'ID':
                     d.update({p: count})
-
-                # give textural class that need to be updated via user or calibration
-                elif p in (['As', 'Au', 'Cs', 'ks', 'Texture']):
+                elif p == 'Texture':
                     d.update({p: item})
+                # give textural class that need to be updated via user or calibration
+                elif p in (['As', 'Au', 'Cs', 'ks' ]):
+                    d.update({p: ndefined})
 
                 # set grid data to nodata value in table
                 else:
