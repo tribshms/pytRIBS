@@ -10,6 +10,7 @@ from pytRIBS.shared.infile_mixin import InfileMixin
 from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
+from pytRIBS.results.visualize import Viz
 
 #preprocessing componets
 from pytRIBS.soil.soil import _Soil
@@ -72,7 +73,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
 
 
 
-class Results(InfileMixin, SharedMixin, WaterBalance, Read):
+class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz):
     """
     A tRIBS Results Class.
 
@@ -171,7 +172,7 @@ class Met():
     A tRIBS Met Class.
 
     """
-    def __init__(self):
+    def __init__(self,input_file=None):
 
         GeoMixin.__init__(self)
 

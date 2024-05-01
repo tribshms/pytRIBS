@@ -227,6 +227,7 @@ class SharedMixin:
         :param format: Driver options for writing geodateframe (optional, default = ESRI Shapefile)
 
         :return: GeoDataFrame
+
         """
 
         outfilename = self.options["outfilename"]["value"]
@@ -289,6 +290,7 @@ class SharedMixin:
         :param bool single: If single = True then only spatial files specified at dtime are merged.
         :return: Dictionary of pandas dataframes.
         # TODO add a clean option to store .0 t0 .n files, then zip, probably would only want this if you are saving them out.
+        # TODO also return file names if saved out, also add serial version or a serial flag...so people can reaou
         """
 
         runtime = int(self.options["runtime"]["value"])
