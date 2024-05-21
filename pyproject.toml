@@ -23,7 +23,7 @@ dependencies = [
     "owslib",
     "matplotlib_scalebar"
 ]
-version = "0.2.0"
+version = "0.3.0"
 
 [project.urls]
 Repository = "https://github.com/tribshms/pytRIBS"

@@ -281,6 +281,7 @@ class SharedMixin:
     def merge_parallel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None,
                                      single=True):
         """
+        TODO: Rename as get_spatial_files, and enable it to read parallel or serial results.
         Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
         :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
         :param int dtime : Option to specify time step at which to start merge of files.

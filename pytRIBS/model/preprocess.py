@@ -5,6 +5,7 @@ import rasterio
 import rasterio.fill as fill
 from shapely.geometry import Point
 import geopandas as gpd
+from datetime import datetime
 
 from pytRIBS.shared.inout import InOut
 
@@ -20,6 +21,30 @@ class Preprocess(InOut):
     """
 
     """
+
+    def create_results_dir(self,path=None):
+    # content for make results directories
+        if path is None:
+            basin = self.name #'WS04'
+            scenario = self.scenario #
+            base_name = f"{basin}_"
+            todays_date = datetime.now()
+            todays_date = todays_date.strftime("%Y-%m-%d")
+            results_base_path = f"results/{basin}/{todays_date}/{scenario}/"
+    # results_base_hyd_path = f"{results_base_path}/hyd/"
+    # ## USE this to add subdirectories if they do not exist
+    # # Initialize the base directory
+    # directories = results_base_hyd_path.split('/')
+    # results_base_hyd_path = ''
+    #
+    # # Create the directories one by one
+    # for directory in directories:
+    #     results_base_hyd_path = os.path.join(results_base_hyd_path, directory)
+    #     try:
+    #         os.mkdir(results_base_hyd_path)
+    #     except FileExistsError:
+    #         pass
+
 
     # MESH TOOLS
     @staticmethod

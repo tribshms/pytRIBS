@@ -115,7 +115,7 @@ class InOut:
                               any(tag in _tag for _tag in item.get("tags", []))]
 
                     for dictionary in result:
-                        keyword = dictionary['key_word']
+                        keyword = dictionary['keyword']
                         file.write(f'{keyword}\n')
                         val = dictionary['value']
                         if val is not None:
