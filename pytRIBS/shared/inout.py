@@ -141,8 +141,8 @@ class InOut:
                 output_file.write(f"On: {formatted_datetime}\n\n")
 
                 for key, subdict in self.options.items():
-                    if "key_word" in subdict and "value" in subdict:
-                        keyword = subdict["key_word"]
+                    if "keyword" in subdict and "value" in subdict:
+                        keyword = subdict["keyword"]
                         value = subdict["value"]
                         if value is None:
                             value = ""

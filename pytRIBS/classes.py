@@ -164,8 +164,10 @@ class Mesh():
         # Initialize attributes
         self.point_file = options['pointfilename']
         self.graph_file = options['graphfile']
+        # what about .edge, .node .tri .z
         self.mesh_opts = [options['optmeshinput'], options['graphoption']]
         self.dem_file = options['demfile']
+        #self.outlet =
 
 class Met():
     """
