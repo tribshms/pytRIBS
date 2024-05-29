@@ -115,7 +115,7 @@ class InOut:
                               any(tag in _tag for _tag in item.get("tags", []))]
 
                     for dictionary in result:
-                        keyword = dictionary['key_word']
+                        keyword = dictionary['keyword']
                         file.write(f'{keyword}\n')
                         val = dictionary['value']
                         if val is not None:
@@ -141,8 +141,8 @@ class InOut:
                 output_file.write(f"On: {formatted_datetime}\n\n")
 
                 for key, subdict in self.options.items():
-                    if "key_word" in subdict and "value" in subdict:
-                        keyword = subdict["key_word"]
+                    if "keyword" in subdict and "value" in subdict:
+                        keyword = subdict["keyword"]
                         value = subdict["value"]
                         if value is None:
                             value = ""
@@ -346,81 +346,6 @@ class InOut:
             for station in station_list:
                 line = f"{station['station_id']} {station['file_path']} {station['lat_dd']} {station['y']} {station['long_dd']} {station['x']} " \
                        f"{station['GMT']} {station['record_length']} {station['num_parameters']} {station['other']}\n"
-                file.write(line)
-
-
-    def read_soil_table(self, file_path=None):
-        """
-        Soil Reclassification Table Structure (*.sdt)
-        #Types #Params
-        ID Ks thetaS thetaR m PsiB f As Au n ks Cs
-        """
-        if file_path is None:
-            file_path = self.options["soiltablename"]["value"]
-
-            if file_path is None:
-                print(self.options["soiltablename"]["key_word"] + "is not specified.")
-                return None
-
-        soil_list = []
-
-        with open(file_path, 'r') as file:
-            lines = file.readlines()
-
-        metadata = lines.pop(0)
-        num_types, num_params = map(int, metadata.strip().split())
-        param_standard = 12
-
-        if num_params != param_standard:
-            print(f"The number parameters in {file_path} do not conform with standard soil .sdt format.")
-            return
-
-        for l in lines:
-            soil_info = l.strip().split()
-
-            if len(soil_info) == param_standard:
-                _id, ks, theta_s, theta_r, m, psi_b, f, a_s, a_u, n, _ks, c_s = soil_info
-                station = {
-                    "ID": _id,
-                    "Ks": ks,
-                    "thetaS": theta_s,
-                    "thetaR": theta_r,
-                    "m": m,
-                    "PsiB": psi_b,
-                    "f": f,
-                    "As": a_s,
-                    "Au": a_u,
-                    "n": n,
-                    "ks": _ks,
-                    "Cs": c_s
-                }
-                soil_list.append(station)
-
-        if len(soil_list) != num_types:
-            print("Error: Number of soil types does not match the specified count.")
-
-        return soil_list
-    @staticmethod
-    def write_soil_table(soil_list,file_path):
-        """
-        Writes out Soil Reclassification Table(*.sdt) file with the following format:
-        #Types #Params
-        ID Ks thetaS thetaR m PsiB f As Au n ks Cs
-
-        :param soil_list: List of dictionaries containing soil information specified by .sdt structure above.
-        :param file_path: Path to save *.sdt file.
-        """
-        param_standard = 12
-
-        with open(file_path, 'w') as file:
-            # Write metadata line
-            metadata = f"{len(soil_list)} {param_standard}\n"
-            file.write(metadata)
-
-            # Write station information
-            for type in soil_list:
-                line = f"{str(type['ID'])}   {str(type['Ks'])}    {str(type['thetaS'])}    {str(type['thetaR'])}    {str(type['m'])}    {str(type['PsiB'])}    " \
-                       f"{str(type['f'])}    {str(type['As'])}    {str(type['Au'])}    {str(type['n'])}    {str(type['ks'])}    {str(type['Cs'])}\n"
                 file.write(line)
 
     def read_landuse_table(self, file_path=None):
