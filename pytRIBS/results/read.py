@@ -8,6 +8,16 @@ import pandas as pd
 
 class Read():
 
+    def get_qout_results(self):
+        # currently only read for outlet, neet to add for hydronodelist
+        qout_file = self.options["outhydrofilename"]["value"]+'_Outlet.qout'
+        qout_df = pd.read_csv(qout_file, header=None, names=['Time_hr', 'Qstrm_m3s', 'Hlev_m'], skiprows=1, sep='\t')
+
+        starting_date = self.options["startdate"]["value"]
+        date = self.convert_to_datetime(starting_date)
+        dt = pd.to_timedelta(qout_df['Time_hr'], unit='h')
+        qout_df['Time'] = [date + step for step in dt]
+        return qout_df
     def get_mrf_results(self, mrf_file=None):
         """
 

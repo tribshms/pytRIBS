@@ -510,6 +510,9 @@ class SharedMixin:
         if parallel_flag == 1:
             temp = self.merge_parallel_spatial_files(suffix="_00i",dtime=int(self.options['runtime']['value']))
 
+            if not temp:
+                print(f'Failed to merge parallel files, check the correct file path was provided')
+
             runtime = self.options["runtime"]["value"]
 
             while len(runtime) < 4:
