@@ -11,6 +11,7 @@ from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
+from pytRIBS.results.evaluate import Evaluate
 
 #preprocessing componets
 from pytRIBS.soil.soil import _Soil
@@ -73,7 +74,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
 
 
 
-class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz):
+class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
     """
     A tRIBS Results Class.
 
