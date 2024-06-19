@@ -115,7 +115,7 @@ class Read():
         if isinstance(pixel, dict):
             pixel = pixel['pixel']  # waterbalance calc already called
 
-        porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'Porosity'].values[0]
+        porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'ThetaS'gi].values[0]
         element_area = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'VAr'].values[0]
 
         df = pd.DataFrame({
@@ -138,7 +138,7 @@ class Read():
     def get_mrf_wb_dataframe(self):
         drainage_area = self.int_spatial_vars['VAr'].sum()  ## in m, TODO investigate why sum 'VAr' != max CAr ?
         weights = self.int_spatial_vars['VAr'].values / drainage_area
-        porosity = np.sum(self.int_spatial_vars['Porosity'].values * weights)
+        porosity = np.sum(self.int_spatial_vars['ThetaS'].values * weights)
 
         mrf = self.mrf['mrf']
 
@@ -150,7 +150,7 @@ class Read():
             'SWE_mm': 10 * mrf['AvSWE'].values,
             'Canop_mm': 0,  # not average canopy  storage
             'P_mm_h': mrf['MAP'],
-            'ET_mm_h': mrf['MET'] - (mrf['AvSnSub'] * 10 + mrf['AvSnEvap'] * 10 + mrf['AvInSu'] * 10),
+            'ET_mm_h': mrf['MET'] - 10 * (mrf['AvSnSub'] + mrf['AvSnEvap'] + mrf['AvInSu']),
             'Qsurf_mm_h': mrf['Srf'] * 3600 * 1000 / drainage_area,
             'Qunsat_mm_h': 0,  # assumed zero, but not sure if correct?
             'Qsat_mm_h': 0  # assumed zero, but not sure if correct?

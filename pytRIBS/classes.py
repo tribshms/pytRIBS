@@ -7,7 +7,7 @@ from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
 from pytRIBS.shared.infile_mixin import InfileMixin
-from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
+from pytRIBS.shared.shared_mixin import SharedMixin, Meta
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
@@ -57,8 +57,8 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
     def __init__(self):
         # attributes
         self.options = self.create_input_file()  # input options for tRIBS model run
-        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
-        GeoMixin.__init__(self)
+        self.meta = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        Meta.__init__(self)
         #self.area = None
 
     # SIMULATION METHODS
@@ -98,7 +98,7 @@ class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
         # attributes for analysis, plotting, and archiving model results
         self.element = {}
         self.mrf = {'mrf': None, 'waterbalance': None}
-        GeoMixin.__init__(self)
+        Meta.__init__(self)
 
         self.get_invariant_properties()  # shared
 
@@ -109,7 +109,7 @@ class Soil(_Soil):
     """
     def __init__(self, input_file=None):
 
-        GeoMixin.__init__(self)
+        Meta.__init__(self)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)
@@ -134,7 +134,7 @@ class Land():
 
     def __init__(self, input_file=None):
 
-        GeoMixin.__init__(self)
+        Meta.__init__(self)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)
@@ -155,7 +155,7 @@ class Mesh():
 
     def __init__(self, input_file=None):
 
-        GeoMixin.__init__(self)
+        Meta.__init__(self)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)
@@ -177,7 +177,7 @@ class Met():
     """
     def __init__(self,input_file=None):
 
-        GeoMixin.__init__(self)
+        Meta.__init__(self)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)

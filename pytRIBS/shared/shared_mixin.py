@@ -10,9 +10,10 @@ from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 
-class GeoMixin:
+
+class Meta:
     def __init__(self):
-        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.meta = {"Location_Name": None, "Scenario": None, "UTM_Zone": None, "EPSG": None, "Projection": None}
 
 
 class SharedMixin:
@@ -124,9 +125,9 @@ class SharedMixin:
             voi_features = {'ID': ids, 'geometry': polygons}
             node_features = {'ID': ids, 'geometry': points}
 
-            if self.geo["EPSG"] is not None:
-                voi = gpd.GeoDataFrame(voi_features, crs=self.geo["EPSG"])
-                nodes = gpd.GeoDataFrame(node_features, crs=self.geo["EPSG"])
+            if self.meta["EPSG"] is not None:
+                voi = gpd.GeoDataFrame(voi_features, crs=self.meta["EPSG"])
+                nodes = gpd.GeoDataFrame(node_features, crs=self.meta["EPSG"])
             else:
                 voi = gpd.GeoDataFrame(voi_features)
                 nodes = gpd.GeoDataFrame(node_features)
@@ -209,8 +210,8 @@ class SharedMixin:
                 else:
                     x, y = map(float, line.split(','))
                     coordinates.append((x, y))
-        if self.geo["EPSG"] is not None:
-            gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+        if self.meta["EPSG"] is not None:
+            gdf = gpd.GeoDataFrame(features, crs=self.meta["EPSG"])
         else:
             gdf = gpd.GeoDataFrame(features)
             print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
@@ -508,7 +509,7 @@ class SharedMixin:
 
         # read in integrated spatial vars for waterbalance calcs and spatial maps
         if parallel_flag == 1:
-            temp = self.merge_parallel_spatial_files(suffix="_00i",dtime=int(self.options['runtime']['value']))
+            temp = self.merge_parallel_spatial_files(suffix="_00i", dtime=int(self.options['runtime']['value']))
 
             if not temp:
                 print(f'Failed to merge parallel files, check the correct file path was provided')

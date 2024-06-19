@@ -8,6 +8,9 @@ this package SHOULD NOT be considered stable.
 ### Current
 * changed key_word in Model.options dictionary to keyword
 ### Version 0.3.0 (5/03/2024)
+* Changed waterbalance clacs to use ThetaS instead of porosity following tRIBS
+* Converted geo to meta, and added Meta class.
+* Added new function in read.py to read in *_Outlet.qout files
 * Removed tmodel/tresults, replaced with classes
 * added new classes Soil, Mesh, Met, Land
 * renamed mixins folder to shared
