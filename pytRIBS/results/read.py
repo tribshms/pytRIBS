@@ -115,7 +115,7 @@ class Read():
         if isinstance(pixel, dict):
             pixel = pixel['pixel']  # waterbalance calc already called
 
-        porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'ThetaS'gi].values[0]
+        porosity = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'ThetaS'].values[0]
         element_area = self.int_spatial_vars.loc[self.int_spatial_vars.ID == element_id, 'VAr'].values[0]
 
         df = pd.DataFrame({

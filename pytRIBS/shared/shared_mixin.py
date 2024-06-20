@@ -1,6 +1,8 @@
 # shared_mixin.py
 import os
 import glob
+import sys
+
 import numpy as np
 
 import geopandas as gpd
@@ -396,10 +398,18 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_nodes + 2):
-                        line = lines[l].split()
-                        store_nodes[l - 2, 0] = float(line[0])
-                        store_nodes[l - 2, 1] = float(line[1])
-                        boundary_code[l - 2, 0] = float(line[3])
+                        try:
+                            line = lines[l].split()
+                            store_nodes[l - 2, 0] = float(line[0])
+                            store_nodes[l - 2, 1] = float(line[1])
+                            boundary_code[l - 2, 0] = float(line[3])
+                        except IndexError as e:
+                            print(f'Node file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
+
+
+
 
             with open(tri_file[0], 'r') as f:
                 lines = f.readlines()
@@ -411,10 +421,16 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_tri + 2):
-                        line = lines[l].split()
-                        store_tri[l - 2, 0] = float(line[0])
-                        store_tri[l - 2, 1] = float(line[1])
-                        store_tri[l - 2, 2] = float(line[2])
+                        try:
+                            line = lines[l].split()
+                            store_tri[l - 2, 0] = float(line[0])
+                            store_tri[l - 2, 1] = float(line[1])
+                            store_tri[l - 2, 2] = float(line[2])
+                        except IndexError as e:
+                            print(f'Tri file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
+
 
             with open(z_file[0], 'r') as f:
                 lines = f.readlines()
@@ -426,8 +442,14 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_z + 2):
-                        line = lines[l].split()
-                        store_z[l - 2, 0] = float(line[0])
+                        try:
+                            line = lines[l].split()
+                            store_z[l - 2, 0] = float(line[0])
+                        except IndexError as e:
+                            print(f'Z file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
+
 
             with open(outfile, 'w') as f:
                 f.write("# vtk DataFile Version 3.0\n")

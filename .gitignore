@@ -12,3 +12,4 @@ scratch/HJ_BenchMark/syc_domain/
 /jupyter examples/soil_preprocess_workflow/data/
 dist
 pytRIBS.egg-info
+/temp.py
