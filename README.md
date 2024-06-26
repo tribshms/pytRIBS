@@ -5,12 +5,13 @@ Note this packages is currently under development and is subject to further chan
 ## Release/Version Notes
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
 this package SHOULD NOT be considered stable.
-### Current
+### Version 0.4.0 (in progress)
 * changed key_word in Model.options dictionary to keyword
-### Version 0.3.0 (5/03/2024)
+* Updated Met Class including methods to download and merge NLDAS data.
 * Changed waterbalance clacs to use ThetaS instead of porosity following tRIBS
 * Converted geo to meta, and added Meta class.
 * Added new function in read.py to read in *_Outlet.qout files
+### Version 0.3.0 (5/03/2024)
 * Removed tmodel/tresults, replaced with classes
 * added new classes Soil, Mesh, Met, Land
 * renamed mixins folder to shared

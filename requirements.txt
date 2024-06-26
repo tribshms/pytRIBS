@@ -9,3 +9,8 @@ scipy
 rosetta-soil
 owslib
 matplotlib_scalebar
+
+dask
+xarray
+netCDF4
+h5netcdf

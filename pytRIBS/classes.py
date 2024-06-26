@@ -13,8 +13,10 @@ from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
 from pytRIBS.results.evaluate import Evaluate
 
-#preprocessing componets
+# preprocessing componets
 from pytRIBS.soil.soil import _Soil
+from pytRIBS.met.met import _Met
+
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
     """
@@ -59,7 +61,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         self.options = self.create_input_file()  # input options for tRIBS model run
         self.meta = {"UTM_Zone": None, "EPSG": None, "Projection": None}
         Meta.__init__(self)
-        #self.area = None
+        # self.area = None
 
     # SIMULATION METHODS
     def __getattr__(self, name):
@@ -71,7 +73,6 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         # Include the keys from the options dictionary and the methods of the class
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
-
 
 
 class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
@@ -102,11 +103,13 @@ class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
 
         self.get_invariant_properties()  # shared
 
+
 class Soil(_Soil):
     """
     A tRIBS Soil Class.
 
     """
+
     def __init__(self, input_file=None):
 
         Meta.__init__(self)
@@ -120,10 +123,10 @@ class Soil(_Soil):
         self.soil_class_map = options['soilmapname']
         self.soil_table = options['soiltablename']
         self.soil_gdf = options['scgrid']
-        self.soil_opts = [options['optsoiltype'], options['optgroundwater'], options['optgwfile'], options['optbedrock']]
+        self.soil_opts = [options['optsoiltype'], options['optgroundwater'], options['optgwfile'],
+                          options['optbedrock']]
         self.bed_rock_map = options['bedrockfile']
         self.initial_gw_map = options['gwaterfile']
-
 
 
 class Land():
@@ -147,6 +150,7 @@ class Land():
         self.land_gdf = options['lugrid']
         self.land_opts = {options['optlanduse'], options['optluintercept']}
 
+
 class Mesh():
     """
     A tRIBS Met Class.
@@ -168,14 +172,16 @@ class Mesh():
         # what about .edge, .node .tri .z
         self.mesh_opts = [options['optmeshinput'], options['graphoption']]
         self.dem_file = options['demfile']
-        #self.outlet =
+        # self.outlet =
 
-class Met():
+
+class Met(_Met):
     """
     A tRIBS Met Class.
 
     """
-    def __init__(self,input_file=None):
+
+    def __init__(self, input_file=None):
 
         Meta.__init__(self)
 
@@ -188,6 +194,5 @@ class Met():
         self.precip_sdf = options['gaugestations']
         self.precip_radar = options['rainfile']
         self.weather_gdf = options['hydrometgrid']
-        self.met_opts = {options['metdataoption'],options['rainsource'],options['hydrometbasename'],options['gaugebasename'],options['rainextension']}
-
-
+        self.met_opts = [options['metdataoption'], options['rainsource'], options['hydrometbasename'],
+                         options['gaugebasename'], options['rainextension']]

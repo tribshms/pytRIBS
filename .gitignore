@@ -13,3 +13,5 @@ scratch/HJ_BenchMark/syc_domain/
 dist
 pytRIBS.egg-info
 /temp.py
+/test/
+/testing_get_met.py
