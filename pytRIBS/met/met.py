@@ -8,11 +8,12 @@ import requests
 from time import sleep
 import re
 import xarray as xr
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class _Met:
     @staticmethod
-    def get_nldas_data(begin, end, lat_range, lon_range, token, download_dir, verbose = False):
+    def get_nldas_data(begin, end, lat_range, lon_range, token, download_dir, workers= 10, verbose=False):
         """
         Downloads NLDAS data from NASA's GES DISC service within a specified bounding box and time range.
 
@@ -32,14 +33,7 @@ class _Met:
         not been identified. Waiting a few minutes and running the function again the exception will disapper.
         """
 
-        minlat, maxlat = lat_range
-        minlon, maxlon = lon_range
-
-        # Initialize the urllib3 PoolManager
-        http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
-
-        # Set the URL for the GES DISC subset service endpoint
-        svcurl = 'https://disc.gsfc.nasa.gov/service/subset/jsonwsp'
+        # HELPER FUNCTIONS
 
         # Define a method to POST formatted JSON WSP requests to the GES DISC endpoint URL and return the response
         def get_http_data(request):
@@ -52,6 +46,71 @@ class _Met:
             if http_response['type'] == 'jsonwsp/fault':
                 print('API Error: faulty request')
             return http_response
+
+        def download_file(url, session, headers, download_dir, verbose):
+            try:
+                if url.strip():
+                    # Change the format in the URL to NetCDF (bmM0Lw)
+                    url = url.replace('Z3JiLw', 'bmM0Lw')
+                    file_response = session.get(url, headers=headers)
+                    file_response.raise_for_status()
+
+                    # Extract the date from the URL using regex
+                    date_match = re.search(r'\.A(\d{8}\.\d{4})\.', url)
+                    if date_match:
+                        date_str = date_match.group(1)
+                        year = date_str[:4]
+                        file_name = f'NLDAS_{date_str}.nc'
+                    else:
+                        # Fallback to a default name if the date is not found
+                        print("There was an issue with file name")
+                        return
+
+                    # Create a directory for the year if it doesn't exist
+                    year_dir = os.path.join(download_dir, year)
+                    os.makedirs(year_dir, exist_ok=True)
+
+                    file_path = os.path.join(year_dir, file_name)
+
+                    # Save the content to a file
+                    with open(file_path, 'wb') as file:
+                        for chunk in file_response.iter_content(chunk_size=chunk_size):
+                            file.write(chunk)
+                    if verbose:
+                        print(f"Downloaded {file_name}")
+            except requests.exceptions.RequestException as e:
+                print(f"Failed to download {url}: {e}")
+
+        def download_files_in_parallel(urls, token, download_dir, verbose=False, max_workers=workers):
+            # Create a session to handle authentication
+            session = requests.Session()
+            headers = {'Authorization': f'Bearer {token}'}
+
+            # Use ThreadPoolExecutor to download files in parallel
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(download_file, url, session, headers, download_dir, verbose) for url in urls
+                           if url.strip()]
+                for future in as_completed(futures):
+                    # This will raise any exceptions caught in the thread
+                    try:
+                        future.result()
+                    except Exception as e:
+                        print(f"Exception during file download: {e}")
+
+        # SETUP FOR DATA DOWNLOAD
+
+        minlat = min(lat_range)
+        maxlat = max(lat_range)
+        minlon = min(lon_range)
+        maxlon = max(lon_range)
+
+        chunk_size = 512 * 1024  # 512 KB
+
+        # Initialize the urllib3 PoolManager
+        http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
+
+        # Set the URL for the GES DISC subset service endpoint
+        svcurl = 'https://disc.gsfc.nasa.gov/service/subset/jsonwsp'
 
         # Define the parameters for the data subset
         product = 'NLDAS_FORA0125_H_002'
@@ -110,7 +169,7 @@ class _Met:
             print('Job Failed: %s' % response['fault']['code'])
             sys.exit(1)
 
-        # Retrieve a plain-text list of results in a single shot using the saved JobID
+        # creates a list of results in a single shot using the saved JobID
         result = requests.get('https://disc.gsfc.nasa.gov/api/jobs/results/' + my_job_id)
         result.raise_for_status()
         urls = result.text.split('\n')
@@ -118,48 +177,11 @@ class _Met:
         # Create the directory to save the downloaded files
         os.makedirs(download_dir, exist_ok=True)
 
-        # Create a session to handle authentication
-        session = requests.Session()
-        headers = {'Authorization': f'Bearer {token}'}
-
         if verbose:
             print("Downloading Files... this may take a while")
 
-        for url in urls:
-            if url.strip():  # Make sure URL is not empty
-                print('\n%s' % url)
-                try:
+        download_files_in_parallel(urls, token, download_dir, verbose=verbose)
 
-                    # Change the format in the URL to NetCDF (bmM0Lw)
-                    url = url.replace('Z3JiLw', 'bmM0Lw')
-                    file_response = session.get(url, headers=headers)
-                    file_response.raise_for_status()
-
-                    # Extract the date from the URL using regex
-                    date_match = re.search(r'\.A(\d{8}\.\d{4})\.', url)
-                    if date_match:
-                        date_str = date_match.group(1)
-                        year = date_str[:4]
-                        file_name = f'NLDAS_{date_str}.nc'
-                    else:
-                        # Fallback to a default name if the date is not found
-                        print("There was an issue with file name")
-                        exit(1)
-
-                    # Create a directory for the year if it doesn't exist
-                    year_dir = os.path.join(download_dir, year)
-                    os.makedirs(year_dir, exist_ok=True)
-
-                    file_path = os.path.join(year_dir, file_name)
-
-                    # Save the content to a file
-                    with open(file_path, 'wb') as file:
-                        for chunk in file_response.iter_content(chunk_size=1000):
-                            file.write(chunk)
-                    if verbose:
-                        print(f"Downloaded {file_name}")
-                except requests.exceptions.RequestException as e:
-                    print(f"Failed to download {url}: {e}")
     @staticmethod
     def merge_nldas_files_by_year(download_dir, remove_hourly=True):
         """
@@ -201,5 +223,4 @@ class _Met:
 
                 except Exception as e:
                     print(f"Failed to merge files for year {year}: {e}")
-
 
