@@ -408,9 +408,6 @@ class SharedMixin:
                             print(f"Error: {e}")
                             sys.exit(1)
 
-
-
-
             with open(tri_file[0], 'r') as f:
                 lines = f.readlines()
 
@@ -431,7 +428,6 @@ class SharedMixin:
                             print(f"Error: {e}")
                             sys.exit(1)
 
-
             with open(z_file[0], 'r') as f:
                 lines = f.readlines()
 
@@ -449,7 +445,6 @@ class SharedMixin:
                             print(f'Z file may be corrupted, check line {l}')
                             print(f"Error: {e}")
                             sys.exit(1)
-
 
             with open(outfile, 'w') as f:
                 f.write("# vtk DataFile Version 3.0\n")
@@ -510,20 +505,22 @@ class SharedMixin:
         # set closed points or cells to nan
         if len(scalar) == mesh.n_points:
             scalar[mesh['BC_code'] == 1] = np.nan
+            mesh.point_data['scale'] = scalar
         elif len(scalar) == mesh.n_cells:
             extracted = mesh.extract_points(mesh['BC_code'] == 1, adjacent_cells=True)
             scalar[extracted.cell_data['vtkOriginalCellIds']] = np.nan
+            mesh.point_data['scale'] = scalar
         else:
             print("Scalar dimensions must match either the number of points or cells in the mesh.")
 
         plotter = pv.Plotter()
-        plotter.add_mesh(mesh, scalars=scalar, **kwargs)
+        plotter.add_mesh(mesh, scalars='scale', **kwargs)
+        plotter.camera_position = 'xy'  # Set camera to view from top-down (xz plane)
+        plotter.view_vector = [0, 0, 1]  # Set view direction vector to [0, 0, 1] (north is up)
 
         plotter.show()
 
         return plotter
-
-    # This assumes that get_invariant_properties() has been called since requires vornoi? D
 
     def get_invariant_properties(self):
 
