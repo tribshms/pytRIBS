@@ -1,226 +1,382 @@
-import sys
+import numpy as np
+import pandas as pd
+from shapely.geometry import box
+import pynldas2 as nldas
+import pyproj
 import os
-import shutil
-import json
-import urllib3
-import certifi
-import requests
-from time import sleep
-import re
+import geopandas as gpd
+from shapely.geometry import Polygon, MultiPolygon
 import xarray as xr
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+from io import BytesIO
+from pytRIBS.shared.inout import InOut
 
 
-class _Met:
+
+class _Met():
     @staticmethod
-    def get_nldas_data(begin, end, lat_range, lon_range, token, download_dir, workers= 10, verbose=False):
+    def get_nldas(geom, begin, end, epsg, write_path=None, **hyriver_env_vars):
         """
-        Downloads NLDAS data from NASA's GES DISC service within a specified bounding box and time range.
+        Fetches NLDAS data for a given geometry and time period, with optional caching and environment variable configuration.
 
-        Parameters:
-        begTime (str): Beginning time in ISO 8601 format (e.g., '2024-06-20T00:00:00.000Z')
-        endTime (str): Ending time in ISO 8601 format (e.g., '2024-06-20T03:59:59.999Z')
-        lat_range (tuple or list): Latitude range as (minlat, maxlat)
-        lon_range (tuple or list): Longitude range as (minlon, maxlon)
-        token (str): Earthdata token for authentication
-        download_dir (str): Path to the directory where the files will be saved
+        This function is a wrapper around the pynldas2 library, which is cited as follows:
+        Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175. DOI: 10.21105/joss.03175
 
-        Returns:
-        None
+        :param str geom: The geometry for which the data is being requested.
+        :param str begin: The start date for the data request in 'YYYY-MM-DD' format.
+        :param str end: The end date for the data request in 'YYYY-MM-DD' format.
+        :param int epsg: The EPSG code for the coordinate reference system of the geometry.
+        :param str write_path: The path where the resulting xarray dataset should be saved as a NetCDF file, optional.
+        :param **hyriver_env_vars: Additional keyword arguments representing environment variables to control request/response caching and verbosity.
 
-        Note: There is currently an issue where the following exception occurs: Sorry,
-        NLDAS_FORA0125_H.A20200620.0000.002.grb.SUB.grb is not available for downloading. Currently, why this occurs has
-        not been identified. Waiting a few minutes and running the function again the exception will disapper.
+        The following environment variables can be set via **hyriver_env_vars:
+        - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests. Defaults to ./cache/aiohttp_cache.sqlite.
+        - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests. Defaults to ./cache/http_cache.sqlite.
+        - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds. Defaults to one week.
+        - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache. Defaults to false.
+        - HYRIVER_SSL_CERT: Path to an SSL certificate file.
+
+        :returns: The dataset containing the NLDAS data for the specified geometry and time period.
+        :rtype: xarray.Dataset
         """
 
-        # HELPER FUNCTIONS
+        # Assuming gdf is your GeoDataFrame with a 'geometry' column
 
-        # Define a method to POST formatted JSON WSP requests to the GES DISC endpoint URL and return the response
-        def get_http_data(request):
-            hdrs = {'Content-Type': 'application/json', 'Accept': 'application/json'}
-            data = json.dumps(request)
-            r = http.request('POST', svcurl, body=data, headers=hdrs)
-            http_response = json.loads(r.data)
+        # Check if geometry column contains only Polygons
+        if geom.geom_type == 'Polygon':
+            # Convert Polygon to MultiPolygon
+            geom = MultiPolygon([geom])
 
-            # Check for errors
-            if http_response['type'] == 'jsonwsp/fault':
-                print('API Error: faulty request')
-            return http_response
+        # Set environment variables from hyriver_env_vars
+        for key, item in hyriver_env_vars.items():
+            os.environ[key] = item
 
-        def download_file(url, session, headers, download_dir, verbose):
-            try:
-                if url.strip():
-                    # Change the format in the URL to NetCDF (bmM0Lw)
-                    url = url.replace('Z3JiLw', 'bmM0Lw')
-                    file_response = session.get(url, headers=headers)
-                    file_response.raise_for_status()
+        # Fetch data using the nldas library
+        ds_xarray = nldas.get_bygeom(geom, begin, end, epsg, source='netcdf')
 
-                    # Extract the date from the URL using regex
-                    date_match = re.search(r'\.A(\d{8}\.\d{4})\.', url)
-                    if date_match:
-                        date_str = date_match.group(1)
-                        year = date_str[:4]
-                        file_name = f'NLDAS_{date_str}.nc'
-                    else:
-                        # Fallback to a default name if the date is not found
-                        print("There was an issue with file name")
-                        return
+        # Write to NetCDF file if write_path is provided
+        if write_path is not None:
+            ds_xarray.to_netcdf(write_path)
 
-                    # Create a directory for the year if it doesn't exist
-                    year_dir = os.path.join(download_dir, year)
-                    os.makedirs(year_dir, exist_ok=True)
+        return ds_xarray
 
-                    file_path = os.path.join(year_dir, file_name)
+    from pyproj import CRS
+    @staticmethod
+    def get_nldas_elevation(watershed, epsg):
+        """
+        Downloads a NetCDF file of the NLDAS elevation grid and returns it as an xarray DataSet.
 
-                    # Save the content to a file
-                    with open(file_path, 'wb') as file:
-                        for chunk in file_response.iter_content(chunk_size=chunk_size):
-                            file.write(chunk)
-                    if verbose:
-                        print(f"Downloaded {file_name}")
-            except requests.exceptions.RequestException as e:
-                print(f"Failed to download {url}: {e}")
+        :param geopandas.GeoDataFrame watershed: The watershed to clip the elevation data to.
+        :param int epsg: The EPSG code for the desired projection of the output data.
 
-        def download_files_in_parallel(urls, token, download_dir, verbose=False, max_workers=workers):
-            # Create a session to handle authentication
-            session = requests.Session()
-            headers = {'Authorization': f'Bearer {token}'}
+        :returns: The processed elevation data clipped to the watershed extent and reprojected.
+        :rtype: xarray.Dataset
+        """
 
-            # Use ThreadPoolExecutor to download files in parallel
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [executor.submit(download_file, url, session, headers, download_dir, verbose) for url in urls
-                           if url.strip()]
-                for future in as_completed(futures):
-                    # This will raise any exceptions caught in the thread
-                    try:
-                        future.result()
-                    except Exception as e:
-                        print(f"Exception during file download: {e}")
+        # TODO: Need to make it so that this can be cached or passed in as a variable rather than downloaded.
 
-        # SETUP FOR DATA DOWNLOAD
+        url = "https://ldas.gsfc.nasa.gov/sites/default/files/ldas/nldas/NLDAS_elevation.nc4"
 
-        minlat = min(lat_range)
-        maxlat = max(lat_range)
-        minlon = min(lon_range)
-        maxlon = max(lon_range)
+        try:
+            # Send a GET request to the URL
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an error for unsuccessful status codes
 
-        chunk_size = 512 * 1024  # 512 KB
+            # Open the downloaded content as an xarray DataSet
+            with xr.open_dataset(BytesIO(response.content)) as ds:
+                dataset = ds.load()  # Load the dataset into memory
 
-        # Initialize the urllib3 PoolManager
-        http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where())
+            # Drop unnecessary variables
+            if 'time_bnds' in dataset.variables:
+                dataset = dataset.drop_vars('time_bnds')
 
-        # Set the URL for the GES DISC subset service endpoint
-        svcurl = 'https://disc.gsfc.nasa.gov/service/subset/jsonwsp'
+            # Write the CRS to the dataset
+            dataset = dataset.rio.write_crs(32662)  # EPSG code 32662 for Equidistant Cylindrical projection, default
 
-        # Define the parameters for the data subset
-        product = 'NLDAS_FORA0125_H_002'
+            return dataset
 
-        # Construct JSON WSP request for API method: subset
-        subset_request = {
-            'methodname': 'subset',
-            'type': 'jsonwsp/request',
-            'version': '1.0',
-            'args': {
-                'role': 'subset',
-                'start': begin,
-                'end': end,
-                'box': [minlon, minlat, maxlon, maxlat],
-                'crop': True,
-                'data': [{'datasetId': product}]
-            }
-        }
+        except requests.exceptions.RequestException as e:
+            print(f"Error downloading NLDAS elevation file: {e}")
+            return None
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return None
+    @staticmethod
+    def create_nldas_grid_mask(ds, epsg=None):
+        """
+        Create polygons representing each pixel in a grid based on GeoTransform parameters.
 
-        # Submit the subset request to the GES DISC Server
-        response = get_http_data(subset_request)
+        :param xarray.Dataset ds: The input dataset with spatial reference information.
 
-        # Report the JobID and initial status
-        my_job_id = response['result']['jobId']
+        :returns: GeoDataFrame containing polygons representing each pixel.
+        :rtype: geopandas.GeoDataFrame
+        """
 
-        if verbose:
-            print('Obtaining links')
-            print('Job ID: ' + my_job_id)
-            print('Job status: ' + response['result']['Status'])
+        # Extract geotransform from the dataset's spatial reference
+        geotransform_str = ds.spatial_ref.GeoTransform
+        geotransform = tuple(map(float, geotransform_str.split()))
 
-        # Construct JSON WSP request for API method: GetStatus
-        status_request = {
-            'methodname': 'GetStatus',
-            'version': '1.0',
-            'type': 'jsonwsp/request',
-            'args': {'jobId': my_job_id}
-        }
+        # Get number of rows and columns from the dataset
+        cols, rows = len(ds.x.values), len(ds.y.values)
 
-        # Check on the job status after a brief
-        sleep_time = 5
-        while response['result']['Status'] in ['Accepted', 'Running']:
-            sleep(sleep_time)
-            response = get_http_data(status_request)
-            status = response['result']['Status']
-            percent = response['result']['PercentCompleted']
+        # Initialize a list to hold polygon geometries
+        polygons = []
 
-            if verbose:
-                print('Job status: %s (%d%c complete)' % (status, percent, '%'))
+        # Calculate polygons for each pixel
+        for row in range(rows):
+            for col in range(cols):
+                # Calculate pixel coordinates
+                left = geotransform[0] + col * geotransform[1]
+                right = geotransform[0] + (col + 1) * geotransform[1]
+                top = geotransform[3] + row * geotransform[5]
+                bottom = geotransform[3] + (row + 1) * geotransform[5]
 
-            sleep_time = min(sleep_time * 2, 60)
+                # Correct the order of top and bottom if necessary
+                if geotransform[5] > 0:
+                    top, bottom = bottom, top
 
-        if response['result']['Status'] == 'Succeeded':
-            if verbose:
-                print('Job Finished: %s' % response['result']['message'])
+                # Create polygon geometry
+                polygon = box(left, bottom, right, top)
+                polygons.append(polygon)
+
+        # Create a GeoDataFrame from polygons
+        gdf = gpd.GeoDataFrame(geometry=polygons)
+
+        if epsg is not None:
+            gdf.set_crs(epsg, inplace=True)
+
+        return gdf
+    @staticmethod
+    def clip_nldas_grid_mask_to_watershed(mask, watershed, epsg):
+        """
+        Clip a target GeoDataFrame by each polygon in the pixel GeoDataFrame.
+
+        :param geopandas.GeoDataFrame mask: GeoDataFrame containing pixel polygons.
+        :param geopandas.GeoDataFrame watershed: GeoDataFrame to be clipped.
+
+        :returns: List of clipped GeoDataFrames, one for each pixel polygon.
+        :rtype: list
+        """
+
+        # need to convert to utm
+        utm_min = [int((x + 180) // 6) + 1 for x in watershed.bounds.minx.values]
+        utm_max = [int((x + 180) // 6) + 1 for x in watershed.bounds.maxx.values]
+
+        # for hemisphere check
+        min_y = watershed.bounds.miny.min()
+        max_y = watershed.bounds.maxy.max()
+
+        # checks if watershed is in one utm zone and assigns EPSG code accordingly. If it spans utm zones or hemispheres
+        # than the web meractor projeciton is used. Note defaults on NAD83 since NLDAS-2 is for north america, similarly the
+        # above conditionals are likely not needed, but here for future modificaitons/options.
+
+        if np.unique(utm_min) == np.unique(utm_max):
+            utm_zone = np.unique(utm_min)[0]
+            if min_y >= 0:
+                utm_crs = f"EPSG:269{utm_zone}"
+            elif max_y <= 0:
+                utm_crs = f"EPSG:269{utm_zone}"
+            else:
+                utm_crs = f"EPSG:3857"  # web mercator
         else:
-            print('Job Failed: %s' % response['fault']['code'])
-            sys.exit(1)
+            utm_crs = f"EPSG:3857"  # web mercator
 
-        # creates a list of results in a single shot using the saved JobID
-        result = requests.get('https://disc.gsfc.nasa.gov/api/jobs/results/' + my_job_id)
-        result.raise_for_status()
-        urls = result.text.split('\n')
+        clipped_gdfs = []
+        for i, pixel in enumerate(mask.geometry):
+            clipped = gpd.clip(watershed, pixel)
+            clipped_gdfs.append(clipped)
 
-        # Create the directory to save the downloaded files
-        os.makedirs(download_dir, exist_ok=True)
+        clipped_watershed = pd.concat(clipped_gdfs, ignore_index=True)
+        clipped_watershed.set_crs(watershed.crs, inplace=True)
+        # set lat and long columns for centroid
+        clipped_watershed.to_crs(utm_crs, inplace=True)
+        clipped_watershed['x'] = clipped_watershed.centroid.x.values
+        clipped_watershed['y'] = clipped_watershed.centroid.y.values
 
-        if verbose:
-            print("Downloading Files... this may take a while")
+        # Define the coordinate transformation
+        proj = pyproj.CRS(epsg)  # geographic coordinate system
+        utm = pyproj.CRS(utm_crs)  # UTM coordinate system
+        transformer = pyproj.Transformer.from_crs(utm, watershed.crs, always_xy=True)
+        clipped_watershed['long'], clipped_watershed['lat'] = transformer.transform(clipped_watershed['x'],
+                                                                                    clipped_watershed['y'])
 
-        download_files_in_parallel(urls, token, download_dir, verbose=verbose)
+        # set area for thresholding in extract_nldas_timeseries
+        clipped_watershed['area'] = clipped_watershed.geometry.area
 
+        return clipped_watershed, utm_crs
     @staticmethod
-    def merge_nldas_files_by_year(download_dir, remove_hourly=True):
+    def extract_nldas_timeseries(gridded_watershed, nldas_met_xarray, nldas_elev_xarray, threshold_area=0):
         """
-        Merge NetCDF files for each year found in subdirectories of the specified download directory.
+        Convert an xarray dataset to a pandas dataframe for a given location.
 
-        Parameters:
-        download_dir (str): Path to the directory containing subdirectories labeled with years.
-        remove_hourly (bool): Whether to remove the hourly directories after merging (default: True).
+        :param xarray.Dataset ds: xarray dataset.
+        :param tuple location: coordinates (e.g., (lat, lon)).
+        :param list coords: coordinates to include in the dataframe, optional.
+        :param list variables: variables to include in the dataframe, optional.
 
-        Returns:
-        None
+        :returns: pandas dataframe.
+        :rtype: pd.DataFrame
         """
-        for year in os.listdir(download_dir):
-            year_dir = os.path.join(download_dir, year)
-            if os.path.isdir(year_dir):
-                try:
-                    # Collect all files for the year
-                    files = [os.path.join(year_dir, f) for f in os.listdir(year_dir) if f.endswith('.nc')]
-                    # Load and merge the files
-                    ds = xr.open_mfdataset(files, combine='by_coords')
-                    merged_file = os.path.join(download_dir, f'NLDAS_{year}_merged.nc')
-                    ds.to_netcdf(merged_file)
 
-                    # Check number of time steps in merged dataset
-                    num_time_steps = len(ds.time)
+        nldas_time_series = []
+        station_coordinates = []  # x,y,z
 
-                    # Compare with number of files
-                    num_files = len(files)
-                    if num_time_steps == num_files:
-                        if remove_hourly:
-                            shutil.rmtree(year_dir, ignore_errors=True)
-                            print(f"Merged files for year {year} into {merged_file}. Removed {year_dir}.")
-                        else:
-                            print(f"Merged files for year {year} into {merged_file}.")
-                    else:
-                        print(
-                            f"Warning: Number of time steps ({num_time_steps}) does not match number of files ({num_files}) for year {year}.")
-                        # Optionally handle mismatch here, e.g., log warning or skip removal
+        for count in range(0, len(gridded_watershed)):
 
-                except Exception as e:
-                    print(f"Failed to merge files for year {year}: {e}")
+            sub_watershed = gridded_watershed.iloc[count]
+            area = sub_watershed.area
+
+            if area > threshold_area:
+                # get coords
+                long = sub_watershed.long
+                lat = sub_watershed.lat
+                x = sub_watershed.x
+                y = sub_watershed.y
+
+                # extract time series and convert to data frame
+                met_station = nldas_met_xarray.sel(x=long, y=lat, method='nearest')
+                elev_station = nldas_elev_xarray.sel(lon=long, lat=lat, method='nearest')
+                met_df = met_station.to_dataframe()
+                elev_df = elev_station.to_dataframe()
+
+                # append results to list
+                z = elev_df.NLDAS_elev.iloc[0]
+                nldas_time_series.append(met_df)
+                station_coordinates.append([long, x, lat, y, z])
+
+        return nldas_time_series, station_coordinates
+
+    import pyproj
+    import numpy as np
+    import os
+
+    def convert_and_write_nldas_timeseries(self, list_dfs, station_coords,gmt, prefix=None, met_path=None, precip_path=None):
+        """
+        Convert NLDAS timeseries data to UTM coordinates and prepare for tRIBS input.
+
+        :param list list_dfs: List of DataFrames, each containing NLDAS timeseries data with specific columns such as 'date', 'psurf', 'wind_u', 'wind_v', 'temp', 'humidity', 'rsds', and 'prcp'.
+        :param list station_coords: List of tuples, each containing the (longitude, latitude, elevation) for each station.
+        :param str prefix: Prefix for the output filenames.
+        :param str met_path: Directory path where meteorological files will be saved.
+        :param str precip_path: Directory path where precipitation files will be saved.
+        :param int gmt: GMT offset for the data.
+        :param str utm_epsg: EPSG code for the UTM coordinate system.
+
+        :returns: The function writes the transformed timeseries data and station details to specified files.
+        :rtype: None
+        """
+
+        if prefix is None and self.hydromet_base_name['value'] is not None:
+            prefix = self.hydromet_base_name['value']
+        else:
+            prefix = 'MetResults'
+
+        if met_path is None and self.weather_sdf['value'] is not None:
+            met_path = self.weather_sdf['value']
+        else:
+            prefix = ''
+
+        if precip_path is None and self.precip_sdf['value'] is not None:
+            precip_path = self.precip_sdf['value']
+        else:
+            prefix = ''
+
+        if os.path.isfile(met_path):
+            met_dir = os.path.dirname(met_path)
+        else:
+            met_dir = ''
+
+        if os.path.isfile(precip_path):
+            precip_dir = os.path.dirname(precip_path)
+        else:
+            precip_dir = ''
+
+        met_sdf_list = []
+        precip_sdf_list = []
+
+        # Hard coded params for writing
+        count = 1
+        num_params_precip = 5
+        num_params_met = 13
+
+        # Physical constants
+        L = 2.453 * 10 ** 6  # Latent heat of vaporization (J/kg)
+        Rv = 461  # Gas constant for moist air (J/kg-K)
+
+        for df in list_dfs:
+            # Initialize dictionaries for station details
+            met_sdf = {'station_id': None, 'file_path': None, 'lat_dd': None, 'y': None, 'long_dd': None, 'x': None,
+                       'GMT': None, 'record_length': None, 'num_parameters': None, 'other': None}
+            precip_sdf = {'station_id': None, 'file_path': None, 'y': None, 'x': None, 'record_length': None,
+                          'num_parameters': None, 'elevation': None}
+
+            # Update to tRIBS variables
+            df['XC'] = 9999.99
+            df['TS'] = 9999.99
+            df['NR'] = 9999.99
+            df['psurf'] *= 0.01  # Convert pressure from Pa to hPa
+
+            df['US'] = (df['wind_u'] ** 2 + df['wind_v'] ** 2) ** 0.5  # Wind speed
+            df['TA'] = df['temp'] - 273.15  # Temperature in Celsius
+            df['e_sat'] = 6.11 * np.exp(
+                (L / Rv) * ((1 / 273.15) - (1 / df['temp'])))  # Saturation vapor pressure in hPa
+
+            # Calculate saturation vapor pressure (e_sat) in hPa (mb)
+            df['VP'] = (df['humidity'] * df['psurf']) / 0.622
+            df['RH'] = 100 * (df['VP'] / df['e_sat'])
+
+            df.rename(columns={'rsds': 'IS', 'prcp': 'R', 'psurf': 'PA'}, inplace=True)
+            df['date'] = df.index.values
+
+            # Write out files with pytrib utility class InOut
+            precip_file = f'precip_{prefix}_{count}.mdf'
+            met_file = f'met_{prefix}_{count}.mdf'
+
+            precip_file_path = os.path.join(precip_dir, precip_file)
+            met_file_path = os.path.join(met_dir, met_file)
+
+            InOut.write_precip_station(df[['R', 'date']].copy(), precip_file_path)
+            InOut.write_met_station(df[['PA', 'RH', 'XC', 'TS', 'NR', 'TA', 'US', 'VP', 'IS', 'date']].copy(),
+                                    met_file_path)
+
+            # Update sdf dictionaries
+            met_sdf['station_id'] = count
+            precip_sdf['station_id'] = count
+            met_sdf['file_path'] = met_file_path
+            precip_sdf['file_path'] = precip_file_path
+
+            # Geographic coordinates
+            lat = station_coords[count - 1][2]
+            y = station_coords[count - 1][3]
+            long = station_coords[count - 1][0]
+            x = station_coords[count - 1][1]
+
+            met_sdf['lat_dd'] = lat
+            met_sdf['long_dd'] = long
+
+            met_sdf['x'] = x
+            met_sdf['y'] = y
+            precip_sdf['x'] = x
+            precip_sdf['y'] = y
+
+            met_sdf['GMT'] = gmt
+            precip_sdf['elevation'] = station_coords[count - 1][4]
+
+            met_sdf['num_parameters'] = num_params_met
+            precip_sdf['num_parameters'] = num_params_precip
+
+            length = len(df['date'])
+
+            met_sdf['record_length'] = length
+            precip_sdf['record_length'] = length
+
+            met_sdf_list.append(met_sdf)
+            precip_sdf_list.append(precip_sdf)
+
+            count += 1
+
+        InOut.write_met_sdf(met_path, met_sdf_list)
+        InOut.write_precip_sdf(precip_sdf_list, precip_path)
+
+
 

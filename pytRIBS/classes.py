@@ -53,8 +53,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
             :return: List of nodes specified by .dat file
             :rtype: list
 
-
-    """
+        """
 
     def __init__(self):
         # attributes
@@ -192,7 +191,8 @@ class Met(_Met):
 
         self.weather_sdf = options['hydrometstations']
         self.precip_sdf = options['gaugestations']
+        self.hydromet_base_name =  options['hydrometbasename']
         self.precip_radar = options['rainfile']
         self.weather_gdf = options['hydrometgrid']
-        self.met_opts = [options['metdataoption'], options['rainsource'], options['hydrometbasename'],
+        self.met_opts = [options['metdataoption'], options['rainsource'],
                          options['gaugebasename'], options['rainextension']]
