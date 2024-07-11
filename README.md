@@ -6,6 +6,7 @@ Note this packages is currently under development and is subject to further chan
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
 this package SHOULD NOT be considered stable.
 ### Version 0.4.0 (in progress)
+* added in functionality for met class, can now download and subset NLDAS data with watershed shapefile
 * changed key_word in Model.options dictionary to keyword
 * Updated Met Class including methods to download and merge NLDAS data.
 * Changed waterbalance clacs to use ThetaS instead of porosity following tRIBS
