@@ -156,10 +156,10 @@ class _Soil:
             soil_vars = ['bdod', 'clay', 'sand', 'silt', 'wv1500', 'wv0033', 'wv0010'], see https://maps.isric.org/
             stats = ['mean'], see prediciton quantiles at https://www.isric.org/explore/soilgrids/faq-soilgrids
         """
-        epsg = self.geo['EPSG']
+        epsg = self.meta['EPSG']
 
         if epsg is None:
-            print("No EPSG code found. Please update model attribute .geo['EPSG'] with EPSG code.")
+            print("No EPSG code found. Please update model attribute .meta['EPSG'] with EPSG code.")
             return
 
         complete = False

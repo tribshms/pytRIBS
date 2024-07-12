@@ -35,8 +35,8 @@ class InOut:
                     node_bc.append(bc)
 
             node_features = {'bc': node_bc, 'geometry': node_points, 'elevation': node_z}
-            if self.geo["EPSG"] is not None:
-                nodes = gpd.GeoDataFrame(node_features, crs=self.geo["EPSG"])
+            if self.meta["EPSG"] is not None:
+                nodes = gpd.GeoDataFrame(node_features, crs=self.meta["EPSG"])
             else:
                 nodes = gpd.GeoDataFrame(node_features)
                 print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
@@ -458,24 +458,24 @@ class InOut:
                     variable_name, raster_path, raster_extension = parts
                     variable_count += 1
 
-                    path_components = raster_path.split(os.path.sep)
+                    # path_components = raster_path.split(os.path.sep)
+                    #
+                    # # Exclude the last directory as its actually base name
+                    # raster_path = os.path.sep.join(path_components[:-1])
 
-                    # Exclude the last directory as its actually base name
-                    raster_path = os.path.sep.join(path_components[:-1])
-
-                    if raster_path != "NO_DATA":
-                        if not os.path.exists(raster_path):
-                            print(
-                                f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
-                            raster_path = None
-                        elif os.path.getsize(raster_path) == 0:
-                            print(
-                                f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
-                            raster_path = None
-                    elif raster_path == "NO_DATA":
-                        print(
-                            f"Warning: No rasters set for variable '{variable_name}'")
-                        raster_path = None
+                    # if raster_path != "NO_DATA":
+                    #     if not os.path.exists(raster_path+'/'+raster_extension):
+                    #         print(
+                    #             f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
+                    #         raster_path = None
+                    #     elif os.path.getsize(raster_path) == 0:
+                    #         print(
+                    #             f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
+                    #         raster_path = None
+                    # elif raster_path == "NO_DATA":
+                    #     print(
+                    #         f"Warning: No rasters set for variable '{variable_name}'")
+                    #     raster_path = None
 
                     parameters.append({
                         'Variable Name': variable_name,

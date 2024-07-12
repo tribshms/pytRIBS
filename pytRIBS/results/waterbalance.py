@@ -87,8 +87,8 @@ class WaterBalance:
         waterbalance['dS'] = waterbalance['dUnsat'].values + waterbalance['dSat'].values + waterbalance['dCanopySWE'].values \
                              + waterbalance['dSWE'].values + waterbalance['dCanopy'].values
     
-        # net fluxes from surface and saturated and unsaturated zone
-        waterbalance['nQ'] = waterbalance['nQsurf'].values + waterbalance['nQunsat'].values + waterbalance['nQsat'].values
+        # net fluxes from surface and saturated and unsaturated zone, converted Qsurf to negative
+        waterbalance['nQ'] = -waterbalance['nQsurf'].values + waterbalance['nQunsat'].values + waterbalance['nQsat'].values
     
         return waterbalance
     
@@ -169,7 +169,8 @@ class WaterBalance:
         waterbalance.update({"dS": waterbalance['dUnsat'] + waterbalance['dSat'] + waterbalance['dCanopySWE'] +
                                    waterbalance['dSWE'] + waterbalance['dCanopy']})
         # net fluxes from surface and saturated and unsaturated zone
-        waterbalance.update({'nQ': waterbalance['nQsurf'] + waterbalance['nQunsat'] + waterbalance['nQsat']})
+        # changed signs on nQsurf since it's leaving the watershed
+        waterbalance.update({'nQ': -waterbalance['nQsurf'] + waterbalance['nQunsat'] + waterbalance['nQsat']})
     
         if method == 'full' or isinstance(method, list):
             waterbalance = pd.DataFrame(waterbalance, index=[0])

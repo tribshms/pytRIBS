@@ -1,6 +1,8 @@
 # shared_mixin.py
 import os
 import glob
+import sys
+
 import numpy as np
 
 import geopandas as gpd
@@ -10,9 +12,10 @@ from shapely.geometry import LineString
 from shapely.geometry import Point
 from shapely.geometry import Polygon
 
-class GeoMixin:
+
+class Meta:
     def __init__(self):
-        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.meta = {"Location_Name": None, "Scenario": None, "UTM_Zone": None, "EPSG": None, "Projection": None}
 
 
 class SharedMixin:
@@ -124,9 +127,9 @@ class SharedMixin:
             voi_features = {'ID': ids, 'geometry': polygons}
             node_features = {'ID': ids, 'geometry': points}
 
-            if self.geo["EPSG"] is not None:
-                voi = gpd.GeoDataFrame(voi_features, crs=self.geo["EPSG"])
-                nodes = gpd.GeoDataFrame(node_features, crs=self.geo["EPSG"])
+            if self.meta["EPSG"] is not None:
+                voi = gpd.GeoDataFrame(voi_features, crs=self.meta["EPSG"])
+                nodes = gpd.GeoDataFrame(node_features, crs=self.meta["EPSG"])
             else:
                 voi = gpd.GeoDataFrame(voi_features)
                 nodes = gpd.GeoDataFrame(node_features)
@@ -209,8 +212,8 @@ class SharedMixin:
                 else:
                     x, y = map(float, line.split(','))
                     coordinates.append((x, y))
-        if self.geo["EPSG"] is not None:
-            gdf = gpd.GeoDataFrame(features, crs=self.geo["EPSG"])
+        if self.meta["EPSG"] is not None:
+            gdf = gpd.GeoDataFrame(features, crs=self.meta["EPSG"])
         else:
             gdf = gpd.GeoDataFrame(features)
             print("Coordinate Reference System (CRS) was not added to the GeoDataFrame")
@@ -395,10 +398,15 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_nodes + 2):
-                        line = lines[l].split()
-                        store_nodes[l - 2, 0] = float(line[0])
-                        store_nodes[l - 2, 1] = float(line[1])
-                        boundary_code[l - 2, 0] = float(line[3])
+                        try:
+                            line = lines[l].split()
+                            store_nodes[l - 2, 0] = float(line[0])
+                            store_nodes[l - 2, 1] = float(line[1])
+                            boundary_code[l - 2, 0] = float(line[3])
+                        except IndexError as e:
+                            print(f'Node file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
 
             with open(tri_file[0], 'r') as f:
                 lines = f.readlines()
@@ -410,10 +418,15 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_tri + 2):
-                        line = lines[l].split()
-                        store_tri[l - 2, 0] = float(line[0])
-                        store_tri[l - 2, 1] = float(line[1])
-                        store_tri[l - 2, 2] = float(line[2])
+                        try:
+                            line = lines[l].split()
+                            store_tri[l - 2, 0] = float(line[0])
+                            store_tri[l - 2, 1] = float(line[1])
+                            store_tri[l - 2, 2] = float(line[2])
+                        except IndexError as e:
+                            print(f'Tri file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
 
             with open(z_file[0], 'r') as f:
                 lines = f.readlines()
@@ -425,8 +438,13 @@ class SharedMixin:
 
                     # Iterate from the second line onward
                     for l in range(2, num_z + 2):
-                        line = lines[l].split()
-                        store_z[l - 2, 0] = float(line[0])
+                        try:
+                            line = lines[l].split()
+                            store_z[l - 2, 0] = float(line[0])
+                        except IndexError as e:
+                            print(f'Z file may be corrupted, check line {l}')
+                            print(f"Error: {e}")
+                            sys.exit(1)
 
             with open(outfile, 'w') as f:
                 f.write("# vtk DataFile Version 3.0\n")
@@ -487,20 +505,22 @@ class SharedMixin:
         # set closed points or cells to nan
         if len(scalar) == mesh.n_points:
             scalar[mesh['BC_code'] == 1] = np.nan
+            mesh.point_data['scale'] = scalar
         elif len(scalar) == mesh.n_cells:
             extracted = mesh.extract_points(mesh['BC_code'] == 1, adjacent_cells=True)
             scalar[extracted.cell_data['vtkOriginalCellIds']] = np.nan
+            mesh.point_data['scale'] = scalar
         else:
             print("Scalar dimensions must match either the number of points or cells in the mesh.")
 
         plotter = pv.Plotter()
-        plotter.add_mesh(mesh, scalars=scalar, **kwargs)
+        plotter.add_mesh(mesh, scalars='scale', **kwargs)
+        plotter.camera_position = 'xy'  # Set camera to view from top-down (xz plane)
+        plotter.view_vector = [0, 0, 1]  # Set view direction vector to [0, 0, 1] (north is up)
 
         plotter.show()
 
         return plotter
-
-    # This assumes that get_invariant_properties() has been called since requires vornoi? D
 
     def get_invariant_properties(self):
 
@@ -508,7 +528,10 @@ class SharedMixin:
 
         # read in integrated spatial vars for waterbalance calcs and spatial maps
         if parallel_flag == 1:
-            temp = self.merge_parallel_spatial_files(suffix="_00i",dtime=int(self.options['runtime']['value']))
+            temp = self.merge_parallel_spatial_files(suffix="_00i", dtime=int(self.options['runtime']['value']))
+
+            if not temp:
+                print(f'Failed to merge parallel files, check the correct file path was provided')
 
             runtime = self.options["runtime"]["value"]
 
