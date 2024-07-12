@@ -5,7 +5,9 @@ Note this packages is currently under development and is subject to further chan
 ## Release/Version Notes
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
 this package SHOULD NOT be considered stable.
-### Version 0.4.0 (in progress)
+### Verison 0.5.0 (in developmet)
+* Model class can be initialized with combination of Met, Soil, Land, and Mesh classes as well as an input file
+### Version 0.4.0 (07/11/2024)
 * added in functionality for met class, can now download and subset NLDAS data with watershed shapefile
 * changed key_word in Model.options dictionary to keyword
 * Updated Met Class including methods to download and merge NLDAS data.

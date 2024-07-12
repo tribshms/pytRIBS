@@ -21,9 +21,14 @@ dependencies = [
     "scipy",
     "rosetta-soil",
     "owslib",
-    "matplotlib_scalebar"
+    "matplotlib_scalebar",
+    "pynldas2",
+    "pyproj",
+    "xarray",
+    "requests",
+    "pyvista"
 ]
-version = "0.3.0"
+version = "0.4.0"
 
 [project.urls]
 Repository = "https://github.com/tribshms/pytRIBS"

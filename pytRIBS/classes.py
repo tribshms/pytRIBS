@@ -55,12 +55,31 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
 
         """
 
-    def __init__(self):
+    def __init__(self, input_file=None, met=None, land=None, soil=None, mesh=None):
         # attributes
         self.options = self.create_input_file()  # input options for tRIBS model run
+
+        if input_file is not None:
+            self.read_input_file(input_file)
+
         self.meta = {"UTM_Zone": None, "EPSG": None, "Projection": None}
         Meta.__init__(self)
-        # self.area = None
+
+        # Initialize with provided instances
+        self.met = met
+        self.land = land
+        self.soil = soil
+        self.mesh = mesh
+
+        # Merge options from provided instances
+        if met:
+            self.options.update(met.__dict__)
+        if land:
+            self.options.update(land.__dict__)
+        if soil:
+            self.options.update(soil.__dict__)
+        if mesh:
+            self.options.update(mesh.__dict__)
 
     # SIMULATION METHODS
     def __getattr__(self, name):
@@ -119,14 +138,15 @@ class Soil(_Soil):
             options = InfileMixin.create_input_file()
 
         # Initialize attributes
-        self.soil_class_map = options['soilmapname']
-        self.soil_table = options['soiltablename']
-        self.soil_gdf = options['scgrid']
-        self.soil_opts = [options['optsoiltype'], options['optgroundwater'], options['optgwfile'],
-                          options['optbedrock']]
-        self.bed_rock_map = options['bedrockfile']
-        self.initial_gw_map = options['gwaterfile']
-
+        self.soilmapname = options['soilmapname']
+        self.soiltablename = options['soiltablename']
+        self.scgrid = options['scgrid']
+        self.optsoiltype = options['optsoiltype']
+        self.optgroundwater = options['optgroundwater']
+        self.optgwfile = options['optgwfile']
+        self.optbedrock = options['optbedrock']
+        self.bedrockfile = options['bedrockfile']
+        self.gwaterfile = options['gwaterfile']
 
 class Land():
     """
@@ -144,10 +164,11 @@ class Land():
             options = InfileMixin.create_input_file()
 
         # Initialize attributes
-        self.land_class_map = options['landmapname']
-        self.land_table = options['landtablename']
-        self.land_gdf = options['lugrid']
-        self.land_opts = {options['optlanduse'], options['optluintercept']}
+        self.landmapname = options['landmapname']
+        self.landtablename = options['landtablename']
+        self.lugrid = options['lugrid']
+        self.optlanduse = options['optlanduse']
+        self.optluintercept = options['optluintercept']
 
 
 class Mesh():
@@ -166,12 +187,11 @@ class Mesh():
             options = InfileMixin.create_input_file()
 
         # Initialize attributes
-        self.point_file = options['pointfilename']
-        self.graph_file = options['graphfile']
-        # what about .edge, .node .tri .z
-        self.mesh_opts = [options['optmeshinput'], options['graphoption']]
-        self.dem_file = options['demfile']
-        # self.outlet =
+        self.pointfilename = options['pointfilename']
+        self.graphfile = options['graphfile']
+        self.optmeshinput = options['optmeshinput']
+        self.graphoption = options['graphoption']
+        self.demfile = options['demfile']
 
 
 class Met(_Met):
@@ -189,10 +209,12 @@ class Met(_Met):
         else:
             options = InfileMixin.create_input_file()
 
-        self.weather_sdf = options['hydrometstations']
-        self.precip_sdf = options['gaugestations']
-        self.hydromet_base_name =  options['hydrometbasename']
-        self.precip_radar = options['rainfile']
-        self.weather_gdf = options['hydrometgrid']
-        self.met_opts = [options['metdataoption'], options['rainsource'],
-                         options['gaugebasename'], options['rainextension']]
+        self.hydrometstations = options['hydrometstations']
+        self.gaugestations = options['gaugestations']
+        self.hydrometbasename = options['hydrometbasename']
+        self.rainfile = options['rainfile']
+        self.hydrometgrid = options['hydrometgrid']
+        self.metdataoption = options['metdataoption']
+        self.rainsource= options['rainsource']
+        self.gaugebasename = options['gaugebasename']
+        self.rainextension = options['rainextension']
