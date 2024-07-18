@@ -13,4 +13,7 @@ pynldas2
 pyproj
 xarray
 requests
+whitebox
+gdal
+scikit-learn
 

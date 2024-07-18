@@ -402,7 +402,7 @@ class InOut:
                 landuse_list.append(station)
 
         if len(landuse_list) != num_types:
-            print("Error: Number of soil types does not match the specified count.")
+            print("Error: Number of land types does not match the specified count.")
 
         return landuse_list
     @staticmethod
@@ -412,7 +412,7 @@ class InOut:
         #Types	#Params
         ID	a	b1	 P	S	K	b2	Al	 h	Kt	Rs	V LAI theta*_s theta*_t
 
-        :param landuse_list: List of dictionaries containing soil information specified by .ldt structure above.
+        :param landuse_list: List of dictionaries containing land information specified by .ldt structure above.
         :param file_path: Path to save *.sdt file.
         """
         param_standard = 15

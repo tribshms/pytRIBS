@@ -26,7 +26,8 @@ dependencies = [
     "pyproj",
     "xarray",
     "requests",
-    "pyvista"
+    "pyvista",
+    "scikit-learn"
 ]
 version = "0.4.0"
 
