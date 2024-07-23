@@ -6,11 +6,13 @@
 from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
+from pytRIBS.model.RunTribsDocker import RunTribsDocker
 from pytRIBS.shared.infile_mixin import InfileMixin
 from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
+f
 
 #preprocessing componets
 from pytRIBS.soil.soil import _Soil
@@ -49,6 +51,15 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
             :type file_path: str
             :return: List of nodes specified by .dat file
             :rtype: list
+        run_docker(self, volume_path, execution_mode='serial', num_processes=None):
+            Manages Docker operations for running tRIBS.
+            :param volume_path: Path to the volume to be mounted in Docker.
+            :param execution_mode: Mode of execution, 'serial' or 'parallel'.
+            :param num_processes: Number of processes for parallel execution.
+            :type volume_path: str
+            :type execution_mode: str
+            :type num_processes: int or None
+        
 
 
     """
@@ -70,6 +81,16 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         # Include the keys from the options dictionary and the methods of the class
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
+    def run_docker(self, volume_path, execution_mode='serial', num_processes=None):
+        """
+        Manages Docker operations for running tRIBS.
+
+        :param volume_path: Path to the volume to be mounted in Docker.
+        :param execution_mode: Mode of execution, 'serial' or 'parallel'.
+        :param num_processes: Number of processes for parallel execution.
+        """
+        # Call the RunTribsDocker function with the provided arguments
+        RunTribsDocker(volume_path, execution_mode, num_processes)
 
 
 
