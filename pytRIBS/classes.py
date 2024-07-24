@@ -6,17 +6,16 @@
 from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
+from pytRIBS.model.run_tribs_docker import run_tribs_docker
 from pytRIBS.shared.infile_mixin import InfileMixin
-from pytRIBS.shared.shared_mixin import SharedMixin, Meta
+from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
-from pytRIBS.results.evaluate import Evaluate
+f
 
-# preprocessing componets
+#preprocessing componets
 from pytRIBS.soil.soil import _Soil
-from pytRIBS.met.met import _Met
-
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
     """
@@ -52,34 +51,25 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
             :type file_path: str
             :return: List of nodes specified by .dat file
             :rtype: list
+        run_docker(self, volume_path, execution_mode='serial', num_processes=None):
+            Manages Docker operations for running tRIBS.
+            :param volume_path: Path to the volume to be mounted in Docker.
+            :param execution_mode: Mode of execution, 'serial' or 'parallel'.
+            :param num_processes: Number of processes for parallel execution.
+            :type volume_path: str
+            :type execution_mode: str
+            :type num_processes: int or None
+        
 
-        """
 
-    def __init__(self, input_file=None, met=None, land=None, soil=None, mesh=None):
+    """
+
+    def __init__(self):
         # attributes
         self.options = self.create_input_file()  # input options for tRIBS model run
-
-        if input_file is not None:
-            self.read_input_file(input_file)
-
-        self.meta = {"UTM_Zone": None, "EPSG": None, "Projection": None}
-        Meta.__init__(self)
-
-        # Initialize with provided instances
-        self.met = met
-        self.land = land
-        self.soil = soil
-        self.mesh = mesh
-
-        # Merge options from provided instances
-        if met:
-            self.options.update(met.__dict__)
-        if land:
-            self.options.update(land.__dict__)
-        if soil:
-            self.options.update(soil.__dict__)
-        if mesh:
-            self.options.update(mesh.__dict__)
+        self.geo = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        GeoMixin.__init__(self)
+        #self.area = None
 
     # SIMULATION METHODS
     def __getattr__(self, name):
@@ -91,6 +81,17 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         # Include the keys from the options dictionary and the methods of the class
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
+    def run_docker(self, volume_path, execution_mode='serial', num_processes=None):
+        """
+        Manages Docker operations for running tRIBS.
+
+        :param volume_path: Path to the volume to be mounted in Docker.
+        :param execution_mode: Mode of execution, 'serial' or 'parallel'.
+        :param num_processes: Number of processes for parallel execution.
+        """
+        # Call the run_tribs_docker function with the provided arguments
+        run_tribs_docker(volume_path, execution_mode, num_processes)
+
 
 
 class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
