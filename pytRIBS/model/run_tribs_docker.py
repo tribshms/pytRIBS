@@ -4,7 +4,7 @@ import subprocess
 import platform
 import time
 
-class RunTribsDocker:
+class run_tribs_docker:
     def __init__(self, volume_path):
         self.image_name = "tribs/tribs:latest"
         self.volume_path = volume_path

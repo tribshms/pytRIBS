@@ -6,7 +6,7 @@
 from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
-from pytRIBS.model.RunTribsDocker import RunTribsDocker
+from pytRIBS.model.run_tribs_docker import run_tribs_docker
 from pytRIBS.shared.infile_mixin import InfileMixin
 from pytRIBS.shared.shared_mixin import SharedMixin, GeoMixin
 from pytRIBS.results.waterbalance import WaterBalance
@@ -89,8 +89,8 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         :param execution_mode: Mode of execution, 'serial' or 'parallel'.
         :param num_processes: Number of processes for parallel execution.
         """
-        # Call the RunTribsDocker function with the provided arguments
-        RunTribsDocker(volume_path, execution_mode, num_processes)
+        # Call the run_tribs_docker function with the provided arguments
+        run_tribs_docker(volume_path, execution_mode, num_processes)
 
 
 
