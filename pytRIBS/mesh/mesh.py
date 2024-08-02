@@ -1,26 +1,27 @@
 import os
+import shutil
 import sys
-import rasterio
-from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.windows import from_bounds
+
+
 from rasterio.mask import mask
 import numpy as np
-import pyvista as pv
 import geopandas as gpd
+from rasterio.features import shapes
 import matplotlib.pyplot as plt
-import whitebox
 from whitebox import WhiteboxTools
+import matplotlib as mpl
 from shapely.geometry import shape, LineString, Polygon, MultiLineString, Point
-from matplotlib.colors import ListedColormap
-from rasterio.plot import show as rasterio_show
+import rasterio
+import pywt
+import pyvista as pv
 from osgeo import gdal, ogr, osr
-import fiona
-from fiona.crs import from_epsg
-import shapely
+
 from shapely.ops import unary_union
 import time
 
-class Configuration:
 
+class Configuration:
     """
     Here we define the base directory and base file name, and the parameter values
 
@@ -75,432 +76,516 @@ class Configuration:
         print(f"Minimum Slope Value: {self.min_slope_value}")
         print(f"Full Input File Path: {self.get_input_file_path()}")
 
-class DEMPreprocessor:
 
-    def __init__(self, config):
-        self.config = config
-        self.output_file_name = "{filename}dem.tif".format(filename=self.config.version)
-        self.input_path = os.path.join(self.config.base_dir, self.config.input_file_directory, self.config.input_dem_name)
-        self.preprocessed_dem = os.path.join(self.config.base_dir, "1_PREPROCESSED_DEM", self.output_file_name)
-        self.filled_dem = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}fill.tif")
-        self.pour_point_shp = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}pourpoint.shp")
-        self.flow_direction_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}flowdir.tif")
-        self.flow_accumulation_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS",
-                                                     f"{self.config.version}flowacc.tif")
-        self.watershed_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}wsh.tif")
-        self.watershed_boundary = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}bound1.shp")
-        self.stream_order_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}strord.tif")
-        self.stream_line_clipped = os.path.join(self.config.base_dir, "3_DEM_Analysis_Clipped", f"{self.config.version}line_c.shp")
+class _Mesh:
+    def __init__(self, name, dem_path, verbose_mode, dir_proccesed):
+        self.wbt = WhiteboxTools()
+        self.wbt.set_verbose_mode(verbose_mode)
 
-        self.wbt = whitebox.WhiteboxTools()
+        if name is None:
+            name = 'Basin'
 
-        self.filled_dem_data = None
-        self.filled_dem_transform = None
+        self.meta['Name'] = name
 
-        # Ensure output directories exist
-        preprocessed_dir = os.path.dirname(self.preprocessed_dem)
-        if not os.path.exists(preprocessed_dir):
-            os.makedirs(preprocessed_dir)
+        if dir_proccesed is None:
+            dir_proccesed = 'mesh_preprocessing'
+            os.makedirs(dir_proccesed, exist_ok=True)
 
-        analysis_dir = os.path.dirname(self.filled_dem)
-        if not os.path.exists(analysis_dir):
-            os.makedirs(analysis_dir)
+        if dem_path is not None:
+            with rasterio.open(dem_path) as src:
+                crs = src.crs
+                self.meta['EPSG'] = crs.to_epsg()
 
-    def preprocess_dem(self):
+        self.dem_preprocessing = dem_path
+        self.output_dir = dir_proccesed
 
-        """
-
-        Saves the DEM based on the version name and also reproject it to WGS 1984 UTM 12N if not already
-
-        """
-
-        # Open the input raster file
-        with rasterio.open(self.input_path) as src:
-            # Check if the CRS is already WGS 1984 (EPSG:4326)
-            if 'EPSG' in src.crs and src.crs['init'] == 'EPSG:32612':
-                print("Input DEM is already in WGS 1984 (EPSG:32612). No reprojection needed.")
-                profile = src.profile
-                preprocessed_dem = self.preprocessed_dem
-            else:
-                print("Reprojecting input DEM to WGS 1984 (EPSG:32612)...")
-                transform, width, height = calculate_default_transform(
-                    src.crs, 'EPSG:32612', src.width, src.height, *src.bounds)
-                profile = src.profile.copy()
-                profile.update({
-                    'crs': 'EPSG:32612',
-                    'transform': transform,
-                    'width': width,
-                    'height': height
-                })
-                data = src.read(
-                    out_shape=(src.count, height, width),
-                    resampling=Resampling.nearest
-                )
-
-                # Define output path for reprojected DEM in the same directory
-                preprocessed_dem = os.path.join(os.path.dirname(self.preprocessed_dem), self.output_file_name)
-
-            # Write raster data to GeoTIFF file
-            with rasterio.open(preprocessed_dem, 'w', **profile) as dst:
-                dst.write(data)
-
-            print(f"Preprocessed DEM saved to: {preprocessed_dem}")
-
-            print("Preprocessing complete.")
-
-    def fill_depressions_and_plot(self):
-
+    def fill_depressions(self, output_path=None):
         """
         Fill Sinks within the watershed and plot the DEM afterwards
-
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Check if filled DEM already exists and delete if it does
-        if os.path.exists(self.filled_dem):
-            os.remove(self.filled_dem)
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_filled.tif'
 
-        # Use WhiteboxTools for filling depressions
-        wbt = WhiteboxTools()
+        wbt.fill_depressions(self.dem_preprocessing, os.path.abspath(output_path), fix_flats=True)
 
-        # Fill depressions in the preprocessed DEM
-        wbt.fill_depressions(self.preprocessed_dem, self.filled_dem, fix_flats=True)
+        return output_path
 
-        print("Filled DEM saved to:", self.filled_dem)
-
-        # Load filled DEM data
-        with rasterio.open(self.filled_dem) as src:
-            filled_dem_data = src.read(1, masked=True)  # Read the first band and mask NoData values
-            filled_dem_data = np.ma.masked_where(filled_dem_data == src.nodata, filled_dem_data)  # Mask NoData values
-
-            # Plot filled DEM raster
-            plt.figure(figsize=(16, 12))
-            plt.imshow(filled_dem_data, cmap='gray',
-                       extent=[src.bounds.left, src.bounds.right, src.bounds.bottom, src.bounds.top])
-            plt.colorbar(label='Elevation (m)')
-            plt.xlabel('Longitude')
-            plt.ylabel('Latitude')
-            plt.title('Filled Digital Elevation Model (DEM)')
-            plt.grid(False)
-            plt.show()
-
-    def create_pour_point_shapefile_and_plot(self):
-
-        """Uses pour point coordinates to create shapefile of the pour point and plot it accordingly"""
-
-        # Check if pour point shapefile already exists and delete if it does
-        if os.path.exists(self.pour_point_shp):
-            os.remove(self.pour_point_shp)
-
-        # Create a Point geometry object
-        pour_point_geometry = Point(self.config.pour_point_x, self.config.pour_point_y)
-
-        # Create a GeoDataFrame with the Point geometry
+    def create_outlet(self, x, y, flow_accumulation_raster, snap_distance, output_path=None):
+        """
+        Uses pour point coordinates to create shapefile of the pour point and plot it accordingly
+        """
+        pour_point_geometry = Point(x, y)
         pour_point_gdf = gpd.GeoDataFrame(geometry=[pour_point_geometry])
+        pour_point_gdf.set_crs(epsg=self.meta['EPSG'], inplace=True)
+        name = self.meta['Name']
 
-        # Set the coordinate reference system (CRS) of the GeoDataFrame
-        pour_point_gdf.crs = "EPSG:32612"  # WGS 1984 UTM Zone 12N
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_outlet.shp'
 
-        # Save the GeoDataFrame to a shapefile
-        pour_point_gdf.to_file(self.pour_point_shp)
+        pour_point_gdf.to_file(output_path)
 
-        # Load filled DEM raster
-        with rasterio.open(self.filled_dem) as src:
-            filled_dem_data = src.read(1, masked=True)  # Read the first band and mask NoData values
-            filled_dem_transform = src.transform  # Get the transform for plotting
+        wbt = self.wbt
+        wbt.snap_pour_points(os.path.abspath(output_path), os.path.abspath(flow_accumulation_raster),
+                             os.path.abspath(output_path), snap_distance)
 
-        # Plot filled DEM raster with pour points
-        plt.figure(figsize=(10, 8))
-        rasterio_show(filled_dem_data, cmap='Greys', transform=filled_dem_transform, origin='upper', ax=plt.gca())
-        pour_point_gdf.plot(ax=plt.gca(), color='red', markersize=50, label='Pour Point')
+        return output_path
 
-        # Add legend
-        plt.legend()
-
-        # Add title and labels
-        plt.title('Filled DEM with Pour Point')
-        plt.xlabel('Longitude')
-        plt.ylabel('Latitude')
-
-        # Show plot
-        plt.show()
-
-
-    def generate_flow_direction_raster_and_plot(self):
-
+    def generate_flow_direction_raster(self, filled_dem, output_path=None):
         """"
         Creates the flow direction raster based on the D8 method and plot it
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Check if flow direction raster already exists and delete if it does
-        if os.path.exists(self.flow_direction_raster):
-            os.remove(self.flow_direction_raster)
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_d8.tif'
 
-        # Use WhiteboxTools for generating D8 flow direction raster
-        wbt = WhiteboxTools()
-        wbt.d8_pointer(self.filled_dem, self.flow_direction_raster, esri_pntr=True)
+        wbt.d8_pointer(os.path.abspath(filled_dem), os.path.abspath(output_path), esri_pntr=True)
 
-        print("Flow Direction raster saved to:", self.flow_direction_raster)
+        return output_path
 
-        # Load flow direction raster
-        with rasterio.open(self.flow_direction_raster) as src:
-            d8_data = src.read(1, masked=True)  # Read the first band and mask NoData values
-            d8_data = np.ma.masked_where(d8_data == src.nodata, d8_data)  # Mask NoData values
-            transform = src.transform
-
-        # Define custom colormap with unique colors for each value
-        colors = ['red', 'green', 'blue', 'cyan', 'magenta', 'yellow', 'orange', 'purple']
-        unique_values = [1, 2, 4, 8, 16, 32, 64, 128]
-        cmap = ListedColormap(colors)
-
-        # Plot D8 flow direction raster with custom legend
-        plt.figure(figsize=(20, 16))
-        plt.imshow(d8_data, cmap=cmap, extent=[transform[2], transform[2] + transform[0] * src.width,
-                                               transform[5] + transform[4] * src.height, transform[5]])
-        plt.title('D8 Flow Direction')
-
-        # Create custom legend with unique colors and values
-        for i, value in enumerate(unique_values):
-            plt.scatter([], [], color=colors[i], label=str(value))  # Create empty scatter plot for each value with custom color
-        plt.legend(title='Flow Direction Values', loc='center', bbox_to_anchor=(1.1, 0.5))  # Create legend with custom colors
-        plt.gca().set_aspect('equal')  # Set aspect ratio to equal
-        plt.show()
-
-    def generate_flow_accumulation_raster_and_plot(self):
-
+    def generate_flow_accumulation_raster(self, flow_direction_raster, output_path=None):
         """
         Create the flow accumulation raster using the flow direction raster obtained from D8 method
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Check if flow accumulation raster already exists and delete if it does
-        if os.path.exists(self.flow_accumulation_raster):
-            os.remove(self.flow_accumulation_raster)
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_flow_acc.tif'
 
-        # Use WhiteboxTools for generating D8 flow accumulation raster
-        wbt = WhiteboxTools()
-        wbt.d8_flow_accumulation(self.flow_direction_raster, self.flow_accumulation_raster, pntr=True, esri_pntr=True)
+        wbt.d8_flow_accumulation(os.path.abspath(flow_direction_raster), os.path.abspath(output_path),
+                                 pntr=True, esri_pntr=True)
 
-        print("Flow Accumulation raster saved to:", self.flow_accumulation_raster)
+        return output_path
 
-        # Load flow accumulation raster
-        with rasterio.open(self.flow_accumulation_raster) as src:
-            flow_accumulation_raster_data = src.read(1, masked=True)  # Read the first band and mask NoData values
-            flow_accumulation_raster_data = np.ma.masked_where(flow_accumulation_raster_data == src.nodata,
-                                                               flow_accumulation_raster_data)  # Mask NoData values
-
-            # Plot flow accumulation raster
-            plt.figure(figsize=(16, 12))
-            plt.imshow(flow_accumulation_raster_data, cmap='gray',
-                       extent=[src.bounds.left, src.bounds.right, src.bounds.bottom, src.bounds.top])
-            plt.colorbar(label='Flow Accumulation Cells')
-            plt.xlabel('Longitude')
-            plt.ylabel('Latitude')
-            plt.title('Flow Accumulation Raster')
-            plt.grid(False)
-            plt.show()
-
-    def generate_watershed_raster(self):
-
-        """
-        Use the pour point shapefile and the flow direction raster to delineate the watershed in the form of a raster
-
-        """
-
-        # Check if watershed raster already exists and delete if it does
-        if os.path.exists(self.watershed_raster):
-            os.remove(self.watershed_raster)
-
-        # Use WhiteboxTools for generating watershed raster
-        wbt = WhiteboxTools()
-        wbt.watershed(self.flow_direction_raster, self.pour_point_shp, self.watershed_raster, esri_pntr=True)
-
-        print("Watershed raster saved to:", self.watershed_raster)
-
-    def generate_watershed_boundary(self):
-
-        """
-        Develop the watershed boundary shapefile from the watershed raster
-        """
-
-        if os.path.exists(self.watershed_boundary):
-            os.remove(self.watershed_boundary)
-
-            # Generate the watershed raster
-        wbt = WhiteboxTools()
-        wbt.watershed(self.flow_direction_raster, self.pour_point_shp, self.watershed_raster, esri_pntr=True)
-
-        # Generate the watershed boundary shapefile
-        raster = gdal.Open(self.watershed_raster)
-        band = raster.GetRasterBand(1)
-        raster_array = band.ReadAsArray()
-        raster_array = np.where(raster_array != band.GetNoDataValue(), 1, 0)
-        proj = raster.GetProjection()
-        shp_proj = osr.SpatialReference()
-        shp_proj.ImportFromWkt(proj)
-        driver = ogr.GetDriverByName('ESRI Shapefile')
-        output_shapefile = driver.CreateDataSource(self.watershed_boundary)
-        layer = output_shapefile.CreateLayer('layername', srs=shp_proj)
-        field_defn = ogr.FieldDefn("ID", ogr.OFTInteger)
-        layer.CreateField(field_defn)
-        gdal.Polygonize(band, None, layer, 0, [], callback=None)
-        output_shapefile = None
-        raster = None
-
-        # Load the shapefile into a GeoDataFrame
-        gdf = gpd.read_file(self.watershed_boundary)
-
-        # Remove polygons with ID == -32768 {means no data}
-        filtered_gdf = gdf[gdf['ID'] != -32768]
-
-        # Save the filtered GeoDataFrame back to a shapefile
-        filtered_gdf.to_file(self.watershed_boundary)
-
-    def extract_streams(self):
-
+    def generate_streams_raster(self, flow_accumulation_raster, threshold_area, output_path=None):
         """
         Obtain the stream raster from the flow accumulation raster based on the stream threshold provided before
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Initialize the WhiteboxTools object
-        self.wbt = whitebox.WhiteboxTools()
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_stream.tif'
 
-        # Set path for stream raster
-        self.stream_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}str.tif")
-
-        # Check if output already exists and delete if it does
-        if os.path.exists(self.stream_raster):
-            os.remove(self.stream_raster)
-
-        # Extract streams using flow accumulation raster and threshold
-        self.wbt.extract_streams(
-            self.flow_accumulation_raster,
-            self.stream_raster,
-            self.config.stream_threshold
+        wbt.extract_streams(
+            os.path.abspath(flow_accumulation_raster),
+            os.path.abspath(output_path),
+            threshold_area
         )
 
-        print("Stream raster saved to:", self.stream_raster)
+        return output_path
 
-    def compute_stream_order(self):
-
+    def generate_watershed_mask(self, flow_direction_raster, pour_point_shp, output_path=None):
         """
-        Obtain the Strahler's Stream Order from the stream raster and flow direction raster
+        Use the pour point shapefile and the flow direction raster to delineate the watershed in the form of a raster
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Initialize the WhiteboxTools object
-        self.wbt = whitebox.WhiteboxTools()
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_watershed_msk.tif'
 
-        # Set path for stream order raster
-        self.stream_order_raster = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS",
-                                                f"{self.config.version}strord.tif")
+        wbt.watershed(os.path.abspath(flow_direction_raster), os.path.abspath(pour_point_shp),
+                      os.path.abspath(output_path), esri_pntr=True)
 
-        # Check if output already exists
-        if os.path.exists(self.stream_order_raster):
-            os.remove(self.stream_order_raster)
+        return output_path
 
-        # Compute Stream order
-        self.wbt.strahler_stream_order(
-            self.flow_direction_raster,
-            self.stream_raster,
-            self.stream_order_raster,
-            esri_pntr=True
-        )
+    def generate_watershed_boundary(self, watershed_mask, output_path=None):
+        """
+        Develop the watershed boundary shapefile from the watershed raster
+        """
+        name = self.meta['Name']
 
-    def convert_stream_raster_to_vector(self):
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_watershed_bound.tif'
 
+        with rasterio.open(watershed_mask) as src:
+            image = src.read(1)  # Read the first band
+            mask = image != src.nodata  # Create a mask for valid data values
+
+            results = (
+                {'properties': {'raster_val': v}, 'geometry': s}
+                for i, (s, v) in enumerate(
+                shapes(image, mask=mask, transform=src.transform))
+            )
+
+            # Convert the results to a GeoDataFrame
+            geoms = list(results)
+            gdf = gpd.GeoDataFrame.from_features(geoms)
+            gdf = gdf.dissolve()
+
+        gdf.to_file(output_path)
+
+        return gdf, output_path
+
+    # def compute_stream_order(self, flow_direction_raster, stream_raster, output_path):
+    #
+    #     """
+    #     Obtain the Strahler's Stream Order from the stream raster and flow direction raster
+    #     """
+    #     wbt = self.wbt
+    #     wbt.strahler_stream_order(
+    #         flow_direction_raster,
+    #         stream_raster,
+    #         output_path,
+    #         esri_pntr=True
+    #     )
+
+    def convert_stream_raster_to_vector(self, stream_raster, flow_direction_raster, output_path=None):
         """
         Create a shapefile of the stream network from the stream raster
         """
+        wbt = self.wbt
+        name = self.meta['Name']
 
-        # Set path for stream vector
-        self.streamline_shp = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}line.shp")
-
-        # Check if output already exists and delete if it does
-        if os.path.exists(self.streamline_shp):
-            os.remove(self.streamline_shp)
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_streams.shp'
 
         # Convert Stream Raster to Vector
-        self.wbt.raster_streams_to_vector(
-            self.stream_raster,
-            self.flow_direction_raster,
-            self.streamline_shp,
+        wbt.raster_streams_to_vector(
+            os.path.abspath(stream_raster),
+            os.path.abspath(flow_direction_raster),
+            os.path.abspath(output_path),
             esri_pntr=True
         )
 
-        print("Streamline shapefile saved to:", self.streamline_shp)
+        return output_path
 
-
-
-    def clip_rasters(self):
-
+    def clip_rasters(self, raster_list, watershed_boundary, method='boundary', output_dir=None):
         """
         Using the watershed boundary polygon to clip the filled dem, flow direction raster, stream raster and stream order raster
         """
 
-        # Create Output Directory for clipped Rasters
-        self.clipped_directory = os.path.join(self.config.base_dir, "3_DEM_Analysis_Clipped")
-        os.makedirs(self.clipped_directory, exist_ok=True)
+        if output_dir is None:
+            output_dir = f'{self.output_dir}/'
 
-        # Define input rasters
-        input_rasters = [
-            self.filled_dem,
-            self.flow_direction_raster,
-            self.flow_accumulation_raster,
-            self.stream_raster,
-            self.stream_order_raster
-        ]
+        ws_bound = gpd.read_file(watershed_boundary)
+        geometry = [unary_union(ws_bound.geometry)]
+        bounds = ws_bound.total_bounds  # [minx, miny, maxx, maxy]
 
-        # Loop through each input raster
-        for raster_file in input_rasters:
-            # Define the output filename for the clipped raster
-            output_filename = os.path.basename(raster_file).replace(".", "_c.")
-            output_raster = os.path.join(self.clipped_directory, output_filename)
+        for raster_file in raster_list:
 
-            # Open the raster file
             with rasterio.open(raster_file) as src:
-                # Open the polygon shapefile
-                with fiona.open(self.watershed_boundary, "r") as shapefile:
-                    geometries = [feature["geometry"] for feature in shapefile]
+                if method == 'boundary' or method == 'both':
 
-                # Clip the raster with the polygon
-                clipped_data, clipped_transform = mask(src, geometries, crop=True)
+                    output_filename = os.path.basename(raster_file).replace(".", "_clipped.")
+                    output_raster = os.path.join(output_dir, output_filename)
 
-                # Update the metadata for the clipped raster
-                clipped_profile = src.profile
-                clipped_profile.update({
-                    'height': clipped_data.shape[1],
-                    'width': clipped_data.shape[2],
-                    'transform': clipped_transform
-                })
+                    clipped_data, clipped_transform = mask(src, geometry, crop=True)
 
-                # Write the clipped raster to the output directory
-                with rasterio.open(output_raster, 'w', **clipped_profile) as dst:
-                    dst.write(clipped_data)
-            print(f"Clipped raster saved to: {output_raster}")
+                    clipped_profile = src.profile
+                    clipped_profile.update({
+                        'height': clipped_data.shape[1],
+                        'width': clipped_data.shape[2],
+                        'transform': clipped_transform
+                    })
 
-    def clip_streamline(self):
+                    with rasterio.open(output_raster, 'w', **clipped_profile) as dst:
+                        dst.write(clipped_data)
 
+                if method == 'extent' or method == 'both':
+
+                    output_filename = os.path.basename(raster_file).replace(".", "_clipped_ext.")
+                    output_raster = os.path.join(output_dir, output_filename)
+
+                    window = from_bounds(*bounds, transform=src.transform)
+
+                    clipped_data = src.read(window=window)
+                    clipped_transform = src.window_transform(window)
+                    clipped_meta = src.meta.copy()
+
+                    # Update the metadata with the new dimensions and transform
+                    clipped_meta.update({
+                        "driver": "GTiff",
+                        "height": clipped_data.shape[1],
+                        "width": clipped_data.shape[2],
+                        "transform": clipped_transform
+                    })
+
+                    # Save the clipped raster to the output path
+                    with rasterio.open(output_raster, "w", **clipped_meta) as dst:
+                        dst.write(clipped_data)
+
+
+
+    def clip_streamline(self, stream_shapefile, watershed_boundary, output_path=None):
         """
         Streamlines shapefile to be clipped by watershed boundary polygon
         """
 
-        # check if output file already exists and delete if it does
-        if os.path.exists(self.stream_line_clipped):
-            os.remove(self.stream_line_clipped)
+        name = self.meta['Name']
 
-        # Read the line shapefile
-        lines = gpd.read_file(self.streamline_shp)
+        if output_path is None:
+            output_path = f'{self.output_dir}/{name}_streams.shp'
 
-        # Set the CRS to EPSG:32612 [WGS 1984]
-        lines.crs = from_epsg(32612)
-
-        # Read the watershed boundary shapefile
-        watershed_boundary_t = gpd.read_file(self.watershed_boundary)
-
-        # Clip the lines with the watershed boundary polygon
+        lines = gpd.read_file(stream_shapefile)
+        watershed_boundary_t = gpd.read_file(watershed_boundary)
         clipped_lines = gpd.clip(lines, watershed_boundary_t)
+        clipped_lines.to_file(output_path)
 
-        # Save the clipped lines to a new shapefile
-        clipped_lines.to_file(self.stream_line_clipped)
+        return output_path
 
+    def extract_watershed_and_stream_network(self, x, y, snap_tol, threshold_area, boundary_path, output_streams_path,
+                                             clean=True):
+
+        output_dir = self.output_dir
+
+        if clean is True:
+            temp = self.output_dir + '/temp'
+            os.makedirs(temp, exist_ok=False)
+            self.output_dir = temp
+
+        filled = self.fill_depressions()
+        d8_raster = self.generate_flow_direction_raster(filled)
+        flow_acc = self.generate_flow_accumulation_raster(d8_raster)
+        streams = self.generate_streams_raster(flow_acc, threshold_area)
+        outlet = self.create_outlet(x, y, flow_acc, snap_tol)
+        ws_mask = self.generate_watershed_mask(d8_raster, outlet)
+        _, ws_bound = self.generate_watershed_boundary(ws_mask, output_path=f'{output_dir}/{boundary_path}')
+        stream_shp = self.convert_stream_raster_to_vector(streams, d8_raster)
+        self.clip_rasters([filled], ws_bound, output_dir=output_dir, method='both')
+        self.clip_streamline(os.path.abspath(stream_shp), ws_bound, output_path=f'{output_dir}/{output_streams_path}')
+
+        if clean is True:
+            shutil.rmtree(temp)
+
+
+    class WaveletTree:
+        def __init__(self, path_to_raster, maxlevel):
+            self.raster = path_to_raster
+            self.extract_raster_and_wavelet_info(maxlevel)
+            self.populate_levels()
+
+        def extract_raster_and_wavelet_info(self, maxlevel):
+            with rasterio.open(self.raster) as src:
+                dem = src.read(1)  # Read the first band
+                dem_affine = src.transform  # Affine transformation
+                bounds = src.bounds
+
+                left, bottom, right, top = bounds
+                width = right - left
+                height = top - bottom
+
+                self.top = top
+                self.bottom = bottom
+                self.left = left
+                self.right = right
+                self.width = width
+                self.height = height
+                self.affine_transform = dem_affine
+                self.upper_left = (dem_affine[2], dem_affine[5])
+                self.dem_data = dem
+
+                self.wavelet_packet = pywt.WaveletPacket2D(data=dem, wavelet='db1', mode='symmetric', maxlevel=maxlevel)
+                self.maxlevel = self.wavelet_packet.maxlevel
+                self.normalizing_coeff = self.find_max_average_coeffs()
+
+        def transform_wavelet_grid(self, level):
+            r, c = np.shape(self.wavelet_packet['a' * level].data)
+            dx = self.width / c
+            dy = self.height / r
+            return dx, dy
+
+        def populate_levels(self):
+            levels = {}
+
+            for level in range(1, self.maxlevel + 1):
+                dx, dy = self.transform_wavelet_grid(level)
+
+                r, c = np.shape(self.wavelet_packet['a' * level].data)
+
+                x = [self.upper_left[0] + dx * i for i in range(c)]
+                y = [self.upper_left[1] - dy * i for i in range(r)]
+
+                qcells = np.array([[WaveCell(xi, yi, dx, dy) for xi in x] for yi in y])
+
+                normalized_coeffs = self.compute_normalized_coefficients(level)
+
+                levels.update({level: {'qcells': qcells, 'norm_detail_coeffs': normalized_coeffs}})
+
+            self.levels = levels
+
+        # WAVELET RELATED METHODS
+
+        def find_max_average_coeffs(self):
+            max_avg_coeffs_per_level = []
+
+            for level in range(1, self.maxlevel + 1):
+                # extract detail coeffs for given level
+                v = self.wavelet_packet['v' * level].data.copy()
+                h = self.wavelet_packet['h' * level].data.copy()
+                d = self.wavelet_packet['d' * level].data.copy()
+
+                r, c = np.shape(v)
+
+                avg_coefs = [np.mean(np.abs([v[x, y], h[x, y], d[x, y]])) for y in range(0, c) for x in range(0, r)]
+                max_avg_coeffs_per_level.append(max(avg_coefs))
+
+            return max(max_avg_coeffs_per_level)
+
+        def compute_normalized_coefficients(self, level):
+
+            def normalize_detail_coefficients(h_ij, v_ij, d_ij):
+                max_detail = np.max(np.abs([h_ij, v_ij, d_ij]))
+                normalized_detail = max_detail / self.normalizing_coeff
+                return normalized_detail
+
+            v = self.wavelet_packet['v' * level].data.copy()
+            h = self.wavelet_packet['h' * level].data.copy()
+            d = self.wavelet_packet['d' * level].data.copy()
+
+            r, c = np.shape(h)
+            norm_coefs = [[normalize_detail_coefficients(h[x, y], v[x, y], d[x, y]) for y in range(0, c)]
+                          for x in range(0, r)]
+
+            return np.array(norm_coefs)
+
+        def select_significant_detail_coefficients(self, error_threshold):
+
+            masks = []
+            thresholds = []
+            lmax = self.maxlevel
+
+            for level in range(1, lmax + 1):
+                normalized_coeffs = self.levels[level]['norm_detail_coeffs']
+                r, c = np.shape(normalized_coeffs)
+                threshold = 2 ** ((lmax - (
+                            level - 1)) - lmax) * error_threshold  # levels are inverted here, i.e. level 1 is max refinement level
+                sig_mask = [[normalized_coeffs[x, y] > threshold for y in range(0, c)]
+                            for x in range(0, r)]
+
+                masks.append(np.array(sig_mask))
+                thresholds.append(threshold)
+
+            self.sig_coeffs_mask = masks
+            self.thresholds = thresholds
+
+        def refine_cell(self, qcell, level):
+
+            if level == 1:
+                return
+
+            dx, dy = self.transform_wavelet_grid(level - 1)  # cell size for next finest level
+
+            r = int(qcell.dx / dx)
+            c = int(qcell.dy / dy)
+
+            x = [qcell.ul_x + dx * i for i in range(r)]
+            y = [qcell.ul_y - dy * i for i in range(c)]
+
+            qcells = np.array([[WaveCell(xi, yi, dx, dy) for xi in x] for yi in y])
+
+            return qcells
+
+        def get_centroids(self, mask=True):
+            if mask:
+                centroids = [cell.polygon.centroid
+                             for level in range(1, self.maxlevel + 1)
+                             for cells, masks in zip(self.levels[level]['qcells'], self.sig_coeffs_mask[level - 1])
+                             for cell, mask in zip(cells.flatten(), masks.flatten())
+                             if mask]
+            else:
+                centroids = [cell.polygon.centroid
+                             for level in range(1, self.maxlevel + 1)
+                             for cells in self.levels[level]['qcells']
+                             for cell in cells.flatten()]
+            return centroids
+
+        def get_elevation_values(self, centroids):
+            elevations = []
+            coords = [(centroid.x, centroid.y) for centroid in centroids]
+
+            with rasterio.open(self.raster) as src:
+                elevations = [val[0] for val in src.sample(coords)]
+
+            return elevations
+
+        def plot_significant_cells(self, level):
+
+            masks = self.sig_coeffs_mask[level - 1].flatten()
+            cells = self.levels[level]['qcells'].flatten()
+            scalar = self.levels[level]['norm_detail_coeffs'].flatten()
+
+            fig, ax = plt.subplots()
+
+            img = ax.imshow(self.levels[level]['norm_detail_coeffs'],
+                            extent=(self.left, self.right, self.bottom, self.top))
+            ax.set_aspect('equal', adjustable='box')
+            plt.colorbar(img, ax=ax)
+
+            for cell, scale in zip(cells[masks], scalar[masks]):
+                cell.plot_cell(ax=ax)
+
+            plt.show()
+
+        @staticmethod
+        def generate_mesh(centroids, elevations, exaggeration):
+            points = np.array([(p.x, p.y, z * exaggeration) for p, z in zip(centroids, elevations)])
+            valid_points = points[~np.isnan(points[:, 2])]
+            point_cloud = pv.PolyData(valid_points)
+            mesh = point_cloud.delaunay_2d()
+            return mesh
+
+        @staticmethod
+        def plot_mesh(mesh):
+            plotter = pv.Plotter()
+            plotter.add_mesh(mesh)
+            plotter.show()
+
+class WaveCell:
+    def __init__(self, ul_x, ul_y, dx, dy):
+        self.ul_x = ul_x
+        self.ul_y = ul_y
+        self.dx = dx
+        self.dy = dy
+        self.vertices = [
+            (self.ul_x, self.ul_y),
+            (self.ul_x + self.dx, self.ul_y),
+            (self.ul_x + self.dx, self.ul_y - self.dy),
+            (self.ul_x, self.ul_y - self.dy)
+        ]
+        self.polygon = Polygon(self.vertices)
+
+    def __repr__(self):
+        return f'WaveCell(ul_x={self.ul_x}, ul_y={self.ul_y}, dx={self.dx}, dy={self.dy}, polygon={self.polygon})'
+
+    def plot_cell(self, ax=None, centroid=False, edge_color=None, face_color=None, scalar=None, scalar_vector=None,
+                  cmap='viridis'):
+        if centroid:
+            centroid = self.polygon.centroid
+            x, y = centroid.x, centroid.y
+        else:
+            x, y = self.polygon.exterior.xy
+
+        return_flag = False
+
+        if ax is None:
+            fig, ax = plt.subplots()
+            return_flag = True
+
+        if edge_color is None:
+            edge_color = 'blue'
+
+        # Determine face color based on scalar value if provided
+        if scalar is not None:
+            # Normalize scalar value to [0, 1] range based on colormap
+            norm_scalar = (scalar - np.min(scalar_vector)) / (np.max(scalar_vector) - np.min(scalar_vector))
+            cmap = mpl.colormaps[cmap]
+            face_color = cmap(norm_scalar)
+
+        if centroid:
+            ax.scatter(x, y, color=edge_color)
+        else:
+            ax.plot(x, y, color=edge_color)
+            ax.fill(x, y, alpha=0.5, fc=face_color, ec=edge_color)
+
+        if return_flag:
+            return fig, ax
 
 class tin_analysis:
 
@@ -520,14 +605,16 @@ class tin_analysis:
         self.generalized_watershed_boundary_polygon = os.path.join(self.config.base_dir, "4_Tin_Temporary_fILES",
                                                                    f"{self.config.version}bdngen.shp")
         self.inner_ring_buffer_output = os.path.join(self.config.base_dir, "4_Tin_Temporary_fILES",
-                                                f"{self.config.version}iring.shp")
-        self.inner_ring_bdry = os.path.join(self.config.base_dir, "4_Tin_Temporary_fILES", f"{self.config.version}irgen.shp")
+                                                     f"{self.config.version}iring.shp")
+        self.inner_ring_bdry = os.path.join(self.config.base_dir, "4_Tin_Temporary_fILES",
+                                            f"{self.config.version}irgen.shp")
         self.dem_path = os.path.join(self.config.base_dir, "3_DEM_Analysis_Clipped", f"{self.config.version}fill_c.tif")
-        self.resampled_dem = os.path.join(self.config.base_dir, "3_DEM_Analysis_Clipped", f"{self.config.version}fill_c_r.tif")
-        self.pour_point_shapefile = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS", f"{self.config.version}pourpoint.shp")
+        self.resampled_dem = os.path.join(self.config.base_dir, "3_DEM_Analysis_Clipped",
+                                          f"{self.config.version}fill_c_r.tif")
+        self.pour_point_shapefile = os.path.join(self.config.base_dir, "2_DEM_ANALYSIS",
+                                                 f"{self.config.version}pourpoint.shp")
         self.generalized_stream_line = os.path.join(self.config.base_dir, "4_Tin_Temporary_fILES",
-                                               f"{self.config.version}strgen.shp")
-
+                                                    f"{self.config.version}strgen.shp")
 
         # Define the CRS for WGS 1984 UTM Zone 12N
         self.crs = 'EPSG:32612'
@@ -718,8 +805,8 @@ class tin_analysis:
         """
 
         ds = gdal.Open(self.dem_path)
-        dsRes = gdal.Warp(self.resampled_dem, ds, xRes=self.config.dem_resample_res, yRes=self.config.dem_resample_res, resampleAlg="bilinear")
-
+        dsRes = gdal.Warp(self.resampled_dem, ds, xRes=self.config.dem_resample_res, yRes=self.config.dem_resample_res,
+                          resampleAlg="bilinear")
 
     def get_internal_nodes(self):
 

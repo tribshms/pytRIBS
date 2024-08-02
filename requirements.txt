@@ -16,4 +16,5 @@ requests
 whitebox
 gdal
 scikit-learn
+PyWavelets
 

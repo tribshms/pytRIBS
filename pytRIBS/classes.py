@@ -16,6 +16,7 @@ from pytRIBS.results.evaluate import Evaluate
 # preprocessing componets
 from pytRIBS.soil.soil import _Soil
 from pytRIBS.met.met import _Met
+from pytRIBS.mesh.mesh import _Mesh
 
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
@@ -62,7 +63,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         if input_file is not None:
             self.read_input_file(input_file)
 
-        self.meta = {"UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.meta = {"EPSG": None}
         Meta.__init__(self)
 
         # Initialize with provided instances
@@ -171,15 +172,17 @@ class Land():
         self.optluintercept = options['optluintercept']
 
 
-class Mesh():
+class Mesh(_Mesh):
     """
     A tRIBS Met Class.
 
     """
 
-    def __init__(self, input_file=None):
+    def __init__(self, name=None, input_file=None, dem_path=None, verbose_mode=False, dir_proccesed=None):
 
         Meta.__init__(self)
+
+        super().__init__(name,dem_path, verbose_mode, dir_proccesed)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)
@@ -193,11 +196,9 @@ class Mesh():
         self.graphoption = options['graphoption']
         self.demfile = options['demfile']
 
-
 class Met(_Met):
     """
     A tRIBS Met Class.
-
     """
 
     def __init__(self, input_file=None):

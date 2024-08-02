@@ -15,7 +15,7 @@ from shapely.geometry import Polygon
 
 class Meta:
     def __init__(self):
-        self.meta = {"Location_Name": None, "Scenario": None, "UTM_Zone": None, "EPSG": None, "Projection": None}
+        self.meta = {"Name": None, "Scenario": None, "EPSG": None}
 
 
 class SharedMixin:
