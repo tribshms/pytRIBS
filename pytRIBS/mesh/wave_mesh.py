@@ -1,17 +1,8 @@
-import math
-
-import numpy as np
-import rasterio
 import pywt
 import pyvista as pv
-from affine import Affine
 import rasterio
 import numpy as np
-from scipy.interpolate import griddata
-from rasterio.transform import from_origin
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from scipy.spatial import Delaunay
+from scipy.interpolate import griddata, RegularGridInterpolator
 
 
 class WaveletTree:
@@ -45,77 +36,39 @@ class WaveletTree:
         return x_min, x_max, y_min, y_max
 
     def find_max_average_coeffs(self):
-        max_avg_coeffs_per_level = []
-
-        for level in range(1, self.maxlevel + 1):
-            # extract detail coeffs for given level
-            v = self.wavelet_packet['v' * level].data
-            h = self.wavelet_packet['h' * level].data
-            d = self.wavelet_packet['d' * level].data
-
-            r, c = np.shape(v)
-
-            avg_coefs = [np.mean(np.abs([v[x, y], h[x, y], d[x, y]])) for y in range(0, c) for x in range(0, r)]
-            max_avg_coeffs_per_level.append(max(avg_coefs))
-
-        return max(max_avg_coeffs_per_level)
-
-    def compute_normalized_coefficients(self, error_threshold):
-
-        sig_masks_list = []
-
-        thresh_exp = 0
-
-        def normalize_detail_coefficients(h_ij, v_ij, d_ij):
-            max_detail = np.max(np.abs([h_ij, v_ij, d_ij]))
-            normalized_detail = max_detail / self.normalizing_coeff
-            return normalized_detail
-
+        max_avg_coeffs = []
         for level in range(1, self.maxlevel + 1):
             v = self.wavelet_packet['v' * level].data
             h = self.wavelet_packet['h' * level].data
             d = self.wavelet_packet['d' * level].data
-
-            threshold = 2 ** (thresh_exp) * error_threshold
-
-            r, c = np.shape(h)
-            norm_coeffs = np.array([[normalize_detail_coefficients(h[x, y], v[x, y], d[x, y]) for y in range(0, c)]
-                                    for x in range(0, r)])
-
-            sig_mask = np.array([[norm_coeffs[x, y] > threshold for y in range(0, c)]
-                                 for x in range(0, r)])
-
-            sig_masks_list.append(sig_mask)
-
-            thresh_exp += -1
-
-        return sig_masks_list
-
+            avg_coeffs = np.mean(np.abs([v, h, d]), axis=0)
+            max_avg_coeffs.append(np.max(avg_coeffs))
+        return max(max_avg_coeffs)
     def extract_points_from_significant_details(self, threshold):
+        def process_level(level):
+            v = self.wavelet_packet['v' * level].data
+            h = self.wavelet_packet['h' * level].data
+            d = self.wavelet_packet['d' * level].data
 
-        def rowcol_to_xy(row, col, dx, dy):
-            x = (self.bounds.left + col * dx)  # + dx / 2  # center
-            y = (self.bounds.top - row * dy)  # + dy / 2  # center
-
-            return x, y
-
-        sig_masks_list = self.compute_normalized_coefficients(threshold)
-        centers = []
-
-        for level in range(1, self.maxlevel + 1):
-            sig_mask = sig_masks_list[level - 1]
-            r, c = np.shape(self.wavelet_packet['a' * level].data)
+            r, c = v.shape
             dx = (self.bounds.right - self.bounds.left) / c
             dy = (self.bounds.top - self.bounds.bottom) / r
+
+            norm_coeffs = np.maximum.reduce([np.abs(v), np.abs(h), np.abs(d)]) / self.normalizing_coeff
+            sig_mask = norm_coeffs > (2 ** (-level + 1) * threshold)
+
             rows, cols = np.where(sig_mask)
-            coords = [rowcol_to_xy(r, c, dx, dy) for r, c in zip(rows, cols)]
-            centers.extend(coords)
+            x_coords = self.bounds.left + cols * dx
+            y_coords = self.bounds.top - rows * dy
 
-        centers = np.array(list(set(centers)))  # ensure no duplicates
+            return zip(x_coords, y_coords)
 
+        centers = set()
+        for level in range(1, self.maxlevel + 1):
+            centers.update(process_level(level))
+
+        centers = np.array(list(centers))
         elevations = self.interpolate_elevations(centers)
-        # with rasterio.open(self.raster) as src:
-        #     elevations = [val[0] * 3 for val in src.sample(centers)]
 
         return np.column_stack((centers, elevations))
 
@@ -125,24 +78,16 @@ class WaveletTree:
         return mesh
 
     def interpolate_elevations(self, points):
-        # Extract original DEM data and its transform parameters
-        original_data = self.data
-        original_transform = self.transform
-        original_height, original_width = original_data.shape
 
-        # Create coordinate grids from the original DEM
-        x = np.arange(original_width) * original_transform[0] + original_transform[2]
-        y = np.arange(original_height) * original_transform[4] + original_transform[5]
+        height, width = self.data.shape
 
-        # Create meshgrid for interpolation
-        grid_x, grid_y = np.meshgrid(x, y)
-        grid_z = original_data.flatten()
+        x = np.arange(width) * self.transform[0] + self.transform[2]
+        y = np.arange(height) * self.transform[4] + self.transform[5]
 
-        # Flatten the grid coordinates for griddata
-        points_grid = np.vstack((grid_x.flatten(), grid_y.flatten())).T
+        interpolator = RegularGridInterpolator((y, x), self.data, method='linear', bounds_error=False,
+                                               fill_value=None)
 
-        # Interpolate elevation for given points
-        elevations = griddata(points_grid, grid_z, points, method='linear')
+        elevations = interpolator((points[:,1],points[:,0]))
 
         return elevations
 
