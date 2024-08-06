@@ -16,7 +16,7 @@ from pytRIBS.results.evaluate import Evaluate
 # preprocessing componets
 from pytRIBS.soil.soil import _Soil
 from pytRIBS.met.met import _Met
-from pytRIBS.mesh.mesh import _Mesh
+from pytRIBS.mesh.mesh import Preprocess, GenerateMesh
 
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
@@ -149,6 +149,7 @@ class Soil(_Soil):
         self.bedrockfile = options['bedrockfile']
         self.gwaterfile = options['gwaterfile']
 
+
 class Land():
     """
     A tRIBS Land Class.
@@ -172,17 +173,24 @@ class Land():
         self.optluintercept = options['optluintercept']
 
 
-class Mesh(_Mesh):
+class Mesh:
     """
     A tRIBS Met Class.
 
     """
 
-    def __init__(self, name=None, input_file=None, dem_path=None, verbose_mode=False, dir_proccesed=None):
+    def __init__(self, x, y, snap_dis, threshold_area, preprocess_args, generate_mesh_args, input_file=None, ):
+        """
 
+        """
         Meta.__init__(self)
 
-        super().__init__(name,dem_path, verbose_mode, dir_proccesed)
+        self.preprocess = Preprocess(*preprocess_args)
+        _, bound_path, stream_path, out_path, _ = generate_mesh_args
+        self.preprocess.extract_watershed_and_stream_network(x, y, snap_dis, threshold_area, out_path, bound_path,
+                                                             stream_path)
+
+        self.mesh_generator = GenerateMesh(*generate_mesh_args)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)
@@ -195,6 +203,7 @@ class Mesh(_Mesh):
         self.optmeshinput = options['optmeshinput']
         self.graphoption = options['graphoption']
         self.demfile = options['demfile']
+
 
 class Met(_Met):
     """
@@ -216,6 +225,6 @@ class Met(_Met):
         self.rainfile = options['rainfile']
         self.hydrometgrid = options['hydrometgrid']
         self.metdataoption = options['metdataoption']
-        self.rainsource= options['rainsource']
+        self.rainsource = options['rainsource']
         self.gaugebasename = options['gaugebasename']
         self.rainextension = options['rainextension']

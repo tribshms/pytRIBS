@@ -500,14 +500,14 @@ class SharedMixin:
             mesh = pv.read(mesh)
 
         if scalar is None:
-            scalar = mesh.get_array('Altitude')
+            scalar = mesh.get_array('Elevation')
 
         # set closed points or cells to nan
         if len(scalar) == mesh.n_points:
-            scalar[mesh['BC_code'] == 1] = np.nan
+            scalar[mesh['BoundaryCode'] == 1] = np.nan
             mesh.point_data['scale'] = scalar
         elif len(scalar) == mesh.n_cells:
-            extracted = mesh.extract_points(mesh['BC_code'] == 1, adjacent_cells=True)
+            extracted = mesh.extract_points(mesh['BoundaryCode'] == 1, adjacent_cells=True)
             scalar[extracted.cell_data['vtkOriginalCellIds']] = np.nan
             mesh.point_data['scale'] = scalar
         else:
