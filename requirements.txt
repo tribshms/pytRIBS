@@ -17,4 +17,5 @@ whitebox
 gdal
 scikit-learn
 PyWavelets
+docker
 

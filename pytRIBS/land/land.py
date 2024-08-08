@@ -41,7 +41,6 @@ def unsupervised_classification_naip(image_path, output_file_path, method='NDVI'
 
         return ndvi, mask
 
-
     with rasterio.open(image_path) as src:
         image = src.read()
         profile = src.profile

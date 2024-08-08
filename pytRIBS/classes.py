@@ -12,6 +12,7 @@ from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
 from pytRIBS.results.evaluate import Evaluate
+from pytRIBS.model.run_docker import tRIBSDocker
 
 # preprocessing componets
 from pytRIBS.soil.soil import _Soil
@@ -92,6 +93,17 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
         # Include the keys from the options dictionary and the methods of the class
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
+
+    @staticmethod
+    def run_tribs_docker(volume_path, execution_mode='serial', num_processes=None):
+        """Main function to run the TRIBSDocker class."""
+        docker_instance = tRIBSDocker(volume_path, execution_mode, num_processes)
+        docker_instance.start_docker_desktop()
+        docker_instance.initialize_docker_client()
+        docker_instance.pull_image()
+        docker_instance.run_container()
+        docker_instance.execute()
+        docker_instance.cleanup_container()
 
 
 class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
@@ -175,22 +187,20 @@ class Land():
 
 class Mesh:
     """
-    A tRIBS Met Class.
-
+    A pytRIBS Mesh Class.
     """
 
-    def __init__(self, x, y, snap_dis, threshold_area, preprocess_args, generate_mesh_args, input_file=None, ):
-        """
-
-        """
+    def __init__(self, preprocess_args=None, generate_mesh_args=None,
+                 input_file=None):
         Meta.__init__(self)
 
-        self.preprocess = Preprocess(*preprocess_args)
-        _, bound_path, stream_path, out_path, _ = generate_mesh_args
-        self.preprocess.extract_watershed_and_stream_network(x, y, snap_dis, threshold_area, out_path, bound_path,
-                                                             stream_path)
-
-        self.mesh_generator = GenerateMesh(*generate_mesh_args)
+        if preprocess_args is not None:  # TODO need to catch if generate_mesh_args is NONE
+            self.preprocess = Preprocess(*preprocess_args)
+            _, bound_path, stream_path, out_path, _ = generate_mesh_args
+            self.preprocess.extract_watershed_and_stream_network(out_path, bound_path,
+                                                                 stream_path)
+        if generate_mesh_args is not None:
+            self.mesh_generator = GenerateMesh(*generate_mesh_args)
 
         if input_file is not None:
             options = SharedMixin.read_input_file(input_file)

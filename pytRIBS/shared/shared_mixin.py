@@ -493,7 +493,7 @@ class SharedMixin:
     def plot_mesh(mesh, scalar=None, **kwargs):
 
         """
-
+        Todo: Need to create and exaggeration argument, maybe though can be passed as kwarg
         """
         if isinstance(mesh, str):
             # check if path exists

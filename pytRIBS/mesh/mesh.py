@@ -20,14 +20,22 @@ from shapely.ops import unary_union
 from pytRIBS.shared.inout import InOut
 
 from pytRIBS.shared.shared_mixin import Meta, SharedMixin
+from pytRIBS.mesh.run_docker import MeshBuilderDocker
 
 
 class Preprocess:
-    def __init__(self, name, dem_path, verbose_mode, meta=None, dir_proccesed=None):
+    def __init__(self, outlet, snap_distance, threshold_area, name, dem_path, verbose_mode, meta=None,
+                 dir_proccesed=None):
+
+        self.outlet = outlet
+        self.snap_distance = snap_distance
+        self.threshold_area = threshold_area
+
 
         if meta is None:
             Meta.__init__(self)
 
+        self.outlet
         self.wbt = WhiteboxTools()
         self.wbt.set_verbose_mode(verbose_mode)
 
@@ -261,9 +269,7 @@ class Preprocess:
 
         return output_path
 
-    def extract_watershed_and_stream_network(self, x, y, snap_tol, threshold_area, outlet_path, boundary_path,
-                                             output_streams_path,
-                                             clean=True):
+    def extract_watershed_and_stream_network(self,outlet_path, boundary_path,output_streams_path,clean=True):
 
         output_dir = self.output_dir
 
@@ -275,8 +281,8 @@ class Preprocess:
         filled = self.fill_depressions()
         d8_raster = self.generate_flow_direction_raster(filled)
         flow_acc = self.generate_flow_accumulation_raster(d8_raster)
-        streams = self.generate_streams_raster(flow_acc, threshold_area)
-        outlet = self.create_outlet(x, y, flow_acc, snap_tol, output_path=f'{outlet_path}')
+        streams = self.generate_streams_raster(flow_acc, self.threshold_area)
+        outlet = self.create_outlet(self.outlet[0], self.outlet[1], flow_acc, self.snap_distance, output_path=f'{outlet_path}')
         ws_mask = self.generate_watershed_mask(d8_raster, outlet)
         _, ws_bound = self.generate_watershed_boundary(ws_mask, output_path=f'{boundary_path}')
         stream_shp = self.convert_stream_raster_to_vector(streams, d8_raster)
@@ -348,6 +354,10 @@ class GenerateMesh:
 
         centers = np.vstack((centers, stream_points, out_points))
         boundary_codes = np.hstack((boundary_codes, stream_code, out_code))
+
+        unique_centers, unique_indices = np.unique(centers, axis=0, return_index=True)
+        centers = unique_centers
+        boundary_codes = boundary_codes[unique_indices]
 
         elevations = self.interpolate_elevations(centers)
 
@@ -459,5 +469,41 @@ class GenerateMesh:
         InOut.write_point_file(gdf, output)
 
     @staticmethod
-    def plot_mesh(mesh,scalar=None,**kwargs):
-        SharedMixin.plot_mesh(mesh,scalar,**kwargs)
+    def plot_mesh(mesh, scalar=None, **kwargs):
+        SharedMixin.plot_mesh(mesh, scalar, **kwargs)
+
+    @staticmethod
+    def generate_meshbuild_input_file(filename, base_name, point_filename):
+        with open(filename, 'w') as file:
+            file.write("VELOCITYRATIO:\n")
+            file.write(f"{str(1.2)}\n")
+            file.write("BASEFLOW:\n")
+            file.write(f"{str(0.2)}\n")
+            file.write("VELOCITYCOEF:\n")
+            file.write(f"{str(60)}\n")
+            file.write("FLOWEXP:\n")
+            file.write(f"{str(0.3)}\n")
+            file.write("OUTFILENAME:\n")
+            file.write(f"{base_name}\n")
+            file.write("POINTFILENAME:\n")
+            file.write(f"{point_filename}\n")
+    @staticmethod
+    def partition_mesh(volume, partition_args):
+        '''
+        @param volume: Path to directory containing .in and .points files
+        @param partition_args: [<name of inpufile (
+        str)>,<number of nodes (int)>,<partition methods 1-3 (int)>,<basename (str)>]
+        @return: Produces a .reach file needed for running tRIBS in parallel mode
+        '''
+        current = os.getcwd()
+        os.chdir(volume)
+
+        meshbuild = MeshBuilderDocker(os.getcwd())
+        meshbuild.start_docker_desktop()
+        meshbuild.pull_image()
+        meshbuild.run_container()
+        meshbuild.execute_meshbuild_workflow(*partition_args)
+        meshbuild.cleanup_container()
+        meshbuild.clean_directory()
+
+        os.chdir(current)
