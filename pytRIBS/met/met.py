@@ -14,8 +14,43 @@ from pytRIBS.shared.inout import InOut
 
 
 class _Met():
+    def get_nldas_point(self, centroids, begin, end, epsg=None, write_path=None, **hyriver_env_vars):
+        """
+        Fetches NLDAS data for a given set of coordinates and time period, with optional caching and environment variable configuration.
+
+        This function is a wrapper around the pynldas2 library, which is cited as follows:
+        Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175. DOI: 10.21105/joss.03175
+
+        :param str geom: The geometry for which the data is being requested.
+        :param str begin: The start date for the data request in 'YYYY-MM-DD' format.
+        :param str end: The end date for the data request in 'YYYY-MM-DD' format.
+        :param int epsg: The EPSG code for the coordinate reference system of the geometry.
+        :param str write_path: The path where the resulting xarray dataset should be saved as a NetCDF file, optional.
+        :param **hyriver_env_vars: Additional keyword arguments representing environment variables to control request/response caching and verbosity.
+
+        The following environment variables can be set via **hyriver_env_vars:
+        - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests. Defaults to ./cache/aiohttp_cache.sqlite.
+        - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests. Defaults to ./cache/http_cache.sqlite.
+        - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds. Defaults to one week.
+        - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache. Defaults to false.
+        - HYRIVER_SSL_CERT: Path to an SSL certificate file.
+
+        :returns: The dataset containing the NLDAS data for the specified geometry and time period.
+        :rtype: pandas dataframe
+        """
+
+        # Set environment variables from hyriver_env_vars
+        for key, item in hyriver_env_vars.items():
+            os.environ[key] = item
+
+        if epsg is None:
+            epsg = self.meta['EPSG']
+        # Fetch data using the nldas library
+        df = nldas.get_bycoords(centroids, begin, end, crs=epsg, source='netcdf')
+
+        return df
     @staticmethod
-    def get_nldas(geom, begin, end, epsg, write_path=None, **hyriver_env_vars):
+    def get_nldas_geom(geom, begin, end, epsg, write_path=None, **hyriver_env_vars):
         """
         Fetches NLDAS data for a given geometry and time period, with optional caching and environment variable configuration.
 
@@ -246,10 +281,6 @@ class _Met():
 
         return nldas_time_series, station_coordinates
 
-    import pyproj
-    import numpy as np
-    import os
-
     def convert_and_write_nldas_timeseries(self, list_dfs, station_coords,gmt, prefix=None, met_path=None, precip_path=None):
         """
         Convert NLDAS timeseries data to UTM coordinates and prepare for tRIBS input.
@@ -266,18 +297,18 @@ class _Met():
         :rtype: None
         """
 
-        if prefix is None and self.hydromet_base_name['value'] is not None:
-            prefix = self.hydromet_base_name['value']
+        if prefix is None and self.hydrometbasename['value'] is not None:
+            prefix = self.hydrometbasename['value']
         else:
             prefix = 'MetResults'
 
-        if met_path is None and self.weather_sdf['value'] is not None:
-            met_path = self.weather_sdf['value']
+        if met_path is None and self.hydrometstations['value'] is not None:
+            met_path = self.hydrometstations['value']
         else:
             prefix = ''
 
-        if precip_path is None and self.precip_sdf['value'] is not None:
-            precip_path = self.precip_sdf['value']
+        if precip_path is None and self.gaugestations ['value'] is not None:
+            precip_path = self.gaugestations ['value']
         else:
             prefix = ''
 
@@ -378,5 +409,12 @@ class _Met():
         InOut.write_met_sdf(met_path, met_sdf_list)
         InOut.write_precip_sdf(precip_sdf_list, precip_path)
 
+    def run_met_workflow(self,watershed, begin, end):
+        epsg = self.meta['EPSG']
+        elev = self.get_nldas_elevation(watershed, epsg=epsg)
+        nldas_ds = self.get_nldas(watershed.to_crs(epsg).geometry[0], begin, end, epsg)
+        mask = self.create_nldas_grid_mask(nldas_ds, epsg=epsg)
+        grid_watershed, _ = self.clip_nldas_grid_mask_to_watershed(mask, watershed.to_crs(epsg), epsg)
+        dfs, coords = self.extract_nldas_timeseries(grid_watershed.to_crs(epsg), nldas_ds, elev)
 
 

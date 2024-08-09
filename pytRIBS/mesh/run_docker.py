@@ -32,7 +32,7 @@ class MeshBuilderDocker:
             else:
                 print(f"Unsupported system: {system}")
                 return
-            time.sleep(10)
+            time.sleep(15)
 
             try:
                 self.client.ping()

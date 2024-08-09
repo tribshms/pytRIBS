@@ -35,7 +35,6 @@ class Preprocess:
         if meta is None:
             Meta.__init__(self)
 
-        self.outlet
         self.wbt = WhiteboxTools()
         self.wbt.set_verbose_mode(verbose_mode)
 

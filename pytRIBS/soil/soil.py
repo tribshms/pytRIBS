@@ -1,7 +1,9 @@
 import re
 import os
+import matplotlib.cm
 
 import numpy as np
+import geopandas as gpd
 from owslib.wcs import WebCoverageService
 from rosetta import rosetta, SoilData
 from scipy.optimize import curve_fit
@@ -11,13 +13,16 @@ from pytRIBS.shared.aux import Aux
 
 class _Soil:
     # Assigning references to the methods
-
+    @staticmethod
+    def discrete_colormap(N, base_cmap=None):
+        cmap = Aux.discrete_cmap(N, base_cmap)
+        return cmap
     @staticmethod
     def fillnodata(files, overwrite=False, **kwargs):
         Aux.fillnodata(files, overwrite=overwrite, **kwargs)
 
     @staticmethod
-    def write_ascii(raster_dict, output_file_path,dtype='float32'):
+    def write_ascii(raster_dict, output_file_path, dtype='float32'):
         InOut.write_ascii(raster_dict, output_file_path, dtype)
 
     @staticmethod
@@ -40,10 +45,10 @@ class _Soil:
         :param file_path: Specify file_path to soil table not assigned to the .
         """
         if file_path is None:
-            file_path = self.soil_table["value"]
+            file_path = self.soiltablename["value"]
 
             if file_path is None:
-                print(self.soil_table["key_word"] + "is not specified.")
+                print(self.soiltablename["key_word"] + "is not specified.")
                 return None
 
         soil_list = []
@@ -164,9 +169,9 @@ class _Soil:
 
         complete = False
 
-        match = re.search(r'EPSG:(\d+)', epsg)
-        if match:
-            epsg = match.group(1)
+        # match = re.search(r'EPSG:(\d+)', epsg)
+        # if match:
+        #     epsg = match.group(1)
 
         data_dir = 'sg250'
         if not os.path.exists(data_dir):
@@ -333,7 +338,7 @@ class _Soil:
                 elif p == 'Texture':
                     d.update({p: item})
                 # give textural class that need to be updated via user or calibration
-                elif p in (['As', 'Au', 'Cs', 'ks' ]):
+                elif p in (['As', 'Au', 'Cs', 'ks']):
                     d.update({p: ndefined})
 
                 # set grid data to nodata value in table
@@ -580,3 +585,79 @@ class _Soil:
 
         f_raster = {'data': f_grid, 'profile': profile}
         self.write_ascii(f_raster, output_file)
+
+    def run_soil_workflow(self, path_to_watershed, output_dir):
+
+        watershed = gpd.read_file(path_to_watershed)
+        bounds = watershed.bounds
+
+        bbox = [bounds.minx[0], bounds.miny[0], bounds.maxx[0], bounds.maxy[0]]
+        depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
+        soil_vars = ['sand', 'silt', 'clay', 'bdod', 'wv0033', 'wv1500']  # note order is important for processing data
+        tribsvars = ['Ks', 'theta_r', 'theta_s', 'psib', 'm']
+        stat = ['mean']
+
+        init_dir = os.getcwd()
+        os.chdir(output_dir)
+
+        files = self.get_soil_grids(bbox, depths, soil_vars, stat)
+        files = [f'sg250/{f}' for f in files]
+
+        self.fillnodata(files)
+
+        for depth in depths:
+            grids = []
+            for soi_var in soil_vars:
+                grids.append({'type': soi_var, 'path': f'sg250/{soi_var}_{depth}_mean_filled.tif'})
+                out = [f'sg250/{x}_{depth}.asc' for x in tribsvars]
+
+            if '0-5' in depth:
+                self.process_raw_soil(grids, output=out)
+            else:
+                self.process_raw_soil(grids, output=out, ks_only=True)
+
+        ks_depths = [0.0001, 50, 150, 300]
+        grid_depth = []
+
+        for cnt in range(0, 4):
+            grid_depth.append({'depth': ks_depths[cnt], 'path': f'sg250/Ks_{depths[cnt]}.asc'})
+
+        ks_decay_param = 'f'
+
+        self.compute_ks_decay(grid_depth, output=f'sg250/{ks_decay_param}.asc')
+
+        grids = [{'type': 'sand', 'path': 'sg250/sand_0-5cm_mean_filled.tif'},
+                 {'type': 'clay', 'path': 'sg250/clay_0-5cm_mean_filled.tif'}]
+        classes = self.create_soil_map(grids, output='sg250/soil_classes.soi')
+        self.write_soil_table(classes, 'soils.sdt', textures=True)
+
+        relative_path = f'{output_dir}/sg250/'
+
+        scgrid_vars = ['KS', 'TR', 'TS', 'PB', 'PI', 'FD',
+                       'PO']  # theta_S (TS) and porosity (PO) are assumed to be the same
+        tribsvars.append(ks_decay_param)
+        tribsvars.append('theta_s')
+        ref_depth = '0-5cm'
+
+        num_param = len(scgrid_vars)
+        lat = 35.11
+        long = 112.65
+        gmt = -7
+        ext = 'asc'
+
+        with open('scgrid.gdf', 'w') as file:
+            file.write(str(num_param) + '\n')
+            file.write(f"{str(lat)}    {str(long)}     {str(gmt)}\n")
+
+            for scgrid, prefix in zip(scgrid_vars, tribsvars):
+                if scgrid == 'FD':
+                    file.write(f"{scgrid}    {relative_path}{prefix}    {ext}\n")
+                else:
+                    file.write(f"{scgrid}    {relative_path}{prefix}_{ref_depth}    {ext}\n")
+
+        os.chdir(init_dir)
+        s
+        # update Soil Class attributes
+        self.soiltablename['value'] = f'{output_dir}/soils.sdt'
+        self.scgrid['value'] = f'{output_dir}/scgrid.gdf'
+        self.soilmapname['value'] = f'{output_dir}/sg250/soil_classes.soi'

@@ -3,10 +3,23 @@ import os
 import shutil
 import pandas as pd
 import rasterio
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 from rasterio import fill
+import  matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Aux:
+
+
+    @staticmethod
+    def discrete_cmap(N, base_cmap='viridis'):
+        """Create an N-bin discrete colormap from the specified input map."""
+        base = plt.get_cmap(base_cmap)
+        color_list = base(np.linspace(0, 1, N))
+        cmap = ListedColormap(color_list, name=base.name + str(N))
+        return cmap
 
     @staticmethod
     def fillnodata(files, overwrite=False, **kwargs):

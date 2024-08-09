@@ -199,6 +199,8 @@ class Mesh:
             _, bound_path, stream_path, out_path, _ = generate_mesh_args
             self.preprocess.extract_watershed_and_stream_network(out_path, bound_path,
                                                                  stream_path)
+            self.meta = self.preprocess.meta
+
         if generate_mesh_args is not None:
             self.mesh_generator = GenerateMesh(*generate_mesh_args)
 
