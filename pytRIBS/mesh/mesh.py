@@ -4,6 +4,8 @@ import shutil
 import pandas as pd
 from rasterio.windows import from_bounds
 from scipy.interpolate import RegularGridInterpolator
+from scipy.spatial import cKDTree
+
 from shapely.vectorized import contains
 from math import ceil
 from rasterio.mask import mask
@@ -30,7 +32,6 @@ class Preprocess:
         self.outlet = outlet
         self.snap_distance = snap_distance
         self.threshold_area = threshold_area
-
 
         if meta is None:
             Meta.__init__(self)
@@ -268,7 +269,7 @@ class Preprocess:
 
         return output_path
 
-    def extract_watershed_and_stream_network(self,outlet_path, boundary_path,output_streams_path,clean=True):
+    def extract_watershed_and_stream_network(self, outlet_path, boundary_path, output_streams_path, clean=True):
 
         output_dir = self.output_dir
 
@@ -281,7 +282,8 @@ class Preprocess:
         d8_raster = self.generate_flow_direction_raster(filled)
         flow_acc = self.generate_flow_accumulation_raster(d8_raster)
         streams = self.generate_streams_raster(flow_acc, self.threshold_area)
-        outlet = self.create_outlet(self.outlet[0], self.outlet[1], flow_acc, self.snap_distance, output_path=f'{outlet_path}')
+        outlet = self.create_outlet(self.outlet[0], self.outlet[1], flow_acc, self.snap_distance,
+                                    output_path=f'{outlet_path}')
         ws_mask = self.generate_watershed_mask(d8_raster, outlet)
         _, ws_bound = self.generate_watershed_boundary(ws_mask, output_path=f'{boundary_path}')
         stream_shp = self.convert_stream_raster_to_vector(streams, d8_raster)
@@ -314,7 +316,7 @@ class GenerateMesh:
                                                    maxlevel=self.maxlevel)
         # update maxlevel incase it's none
         self.maxlevel = self.wavelet_packet.maxlevel
-        self.normalizing_coeff = self.find_max_average_coeffs()
+        self.normalizing_coeff = self.find_max_maximum_coeffs()
 
     def get_extent(self):
 
@@ -335,7 +337,17 @@ class GenerateMesh:
             max_avg_coeffs.append(np.max(avg_coeffs))
         return max(max_avg_coeffs)
 
-    def extract_points_from_significant_details(self, threshold, buffer_distance):
+    def find_max_maximum_coeffs(self):
+        max_coeffs = []
+        for level in range(1, self.maxlevel + 1):
+            v = self.wavelet_packet['v' * level].data
+            h = self.wavelet_packet['h' * level].data
+            d = self.wavelet_packet['d' * level].data
+            avg_coeffs = np.max(np.abs([v, h, d]), axis=0)
+            max_coeffs.append(np.max(avg_coeffs))
+        return max(max_coeffs)
+
+    def extract_points_from_significant_details(self, threshold):
 
         centers = set()
         for level in range(1, self.maxlevel + 1):
@@ -343,9 +355,11 @@ class GenerateMesh:
 
         centers = np.array(list(centers))
 
-        centers, boundary_codes = self._filter_coords_within_geometry(centers, buffer_distance)
+        med_distance, max_distance = self.distance_to_nearest_n(centers, n=6)
 
-        stream_points, stream_code = self._generate_points_along_stream(centers, buffer_distance)
+        centers, boundary_codes = self._filter_coords_within_geometry(centers, med_distance)
+
+        stream_points, stream_code = self._generate_points_along_stream(centers, max_distance)
 
         x, y = self.outlet.geometry[0].xy
         out_points = [[x[0], y[0]]]
@@ -362,22 +376,37 @@ class GenerateMesh:
 
         return np.column_stack((centers, elevations, boundary_codes))
 
-    def _filter_coords_within_geometry(self, coords, buffer_distance):
+    def _filter_coords_within_geometry(self, coords, buffer_distance, num_boundary_points=100):
 
         original_watershed = self.watershed.geometry.iloc[0]
-        buffered_watershed = original_watershed.buffer(buffer_distance)
+        buffered_watershed = original_watershed.buffer(buffer_distance*0.75)
 
-        within_buffer = contains(buffered_watershed, coords[:, 0], coords[:, 1])
+        # this is needed to keep outlet exposed
+        x, y = self.outlet.geometry[0].xy
+        outlet_point = Point(x[0], y[0])
+        outlet_buffer = outlet_point.buffer(buffer_distance*1.5)
 
-        filtered_coords = coords[within_buffer]
+        buffered_watershed = buffered_watershed.difference(outlet_buffer)
 
-        boundary_codes = np.ones(filtered_coords.shape[0], dtype=int)
+        # boundary coords
+        boundary_coords = np.array(list(
+            buffered_watershed.exterior.interpolate(i / num_boundary_points, normalized=True).coords[0] for i in
+            range(num_boundary_points)))
 
-        within_original = contains(original_watershed, filtered_coords[:, 0], filtered_coords[:, 1])
+        boundary_codes = np.ones(boundary_coords.shape[0], dtype=int)
 
-        boundary_codes[within_original] = 0
+        within_original = contains(original_watershed, coords[:, 0], coords[:, 1])
 
-        return filtered_coords, boundary_codes
+        # because the buffered watershed is altered you can have closed nodes within the watershed
+        bcoords_within_orignal = contains(original_watershed, boundary_coords[:, 0], boundary_coords[:, 1])
+
+        boundary_coords = boundary_coords[~bcoords_within_orignal,:]
+        boundary_codes =  boundary_codes[~bcoords_within_orignal]
+
+        all_coords = np.vstack([coords[within_original, :], boundary_coords])
+        all_boundary_codes = np.concatenate([np.zeros(np.sum(within_original), dtype=int), boundary_codes])
+
+        return all_coords, all_boundary_codes
 
     def _process_level(self, level, threshold):
         v = self.wavelet_packet['v' * level].data
@@ -396,6 +425,27 @@ class GenerateMesh:
         y_coords = self.bounds.top - rows * dy
 
         return zip(x_coords, y_coords)
+
+    @staticmethod
+    def distance_to_nearest_n(points, n=6):
+        """
+        Calculate the average distance to the nearest n points for each point in a list.
+
+        Parameters:
+        points (list of tuples): A list of (x, y) coordinates.
+        n (int): The number of nearest neighbors to consider.
+
+        Returns:
+        list: A list of average distances to the nearest n points for each point.
+        """
+        points_array = np.array(points)
+        tree = cKDTree(points_array)
+        distances, _ = tree.query(points_array, k=n + 1)
+
+        median_distance = np.max(np.median(distances[:, :], axis=0))
+        max_distance = np.max(np.max(distances[:, :], axis=0))
+
+        return median_distance, max_distance
 
     def convert_coords_to_mesh(self, coords):
 
@@ -432,8 +482,8 @@ class GenerateMesh:
         """
         stream = self.stream_network
         points_list = []
-        min_points_per_meter = .01
-        max_points_per_meter = 10
+        min_points_per_meter = .001
+        max_points_per_meter = 2
         buffer_distance = buffer_distance / 2
 
         for idx, row in stream.iterrows():
@@ -469,7 +519,9 @@ class GenerateMesh:
 
     @staticmethod
     def plot_mesh(mesh, scalar=None, **kwargs):
-        SharedMixin.plot_mesh(mesh, scalar, **kwargs)
+        plotter = SharedMixin.plot_mesh(mesh, scalar, **kwargs)
+
+        return plotter
 
     @staticmethod
     def generate_meshbuild_input_file(filename, base_name, point_filename):
@@ -486,6 +538,7 @@ class GenerateMesh:
             file.write(f"{base_name}\n")
             file.write("POINTFILENAME:\n")
             file.write(f"{point_filename}\n")
+
     @staticmethod
     def partition_mesh(volume, partition_args):
         '''

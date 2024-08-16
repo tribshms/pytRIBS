@@ -8,10 +8,30 @@ from rasterio import fill
 import  matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from pyproj import Transformer
 
 
 class Aux:
 
+    def utm_to_latlong(self, easting, northing, epsg=None):
+        """
+        Convert UTM coordinates to latitude and longitude using an EPSG code with pyproj.
+
+        Parameters:
+        easting (float): UTM easting coordinate.
+        northing (float): UTM northing coordinate.
+        epsg_code (int): EPSG code representing the UTM projection.
+
+        Returns:
+        tuple: A tuple containing latitude and longitude.
+        """
+        if epsg is None:
+            epsg = self.meta['EPSG']
+
+        transformer = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+        lon, lat = transformer.transform(easting, northing)
+
+        return lat, lon
 
     @staticmethod
     def discrete_cmap(N, base_cmap='viridis'):

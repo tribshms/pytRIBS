@@ -23,7 +23,7 @@ def unsupervised_classification_naip(image_path, output_file_path, method='NDVI'
     :rtype: np.ndarray
     """
 
-    def calculate_ndvi(image):
+    def classify_ndvi(image):
         """
         Calculate NDVI from NAIP image.
         """
@@ -46,7 +46,7 @@ def unsupervised_classification_naip(image_path, output_file_path, method='NDVI'
         profile = src.profile
 
     if method == 'NDVI':
-        data, mask = calculate_ndvi(image)
+        data, mask = classify_ndvi(image)
         profile.update(count=1)
     elif method == 'true_color':
         n_bands, n_rows, n_cols = image.shape

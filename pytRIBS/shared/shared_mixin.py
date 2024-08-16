@@ -518,8 +518,6 @@ class SharedMixin:
         plotter.camera_position = 'xy'  # Set camera to view from top-down (xz plane)
         plotter.view_vector = [0, 0, 1]  # Set view direction vector to [0, 0, 1] (north is up)
 
-        plotter.show()
-
         return plotter
 
     def get_invariant_properties(self):
