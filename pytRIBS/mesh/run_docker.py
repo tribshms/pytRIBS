@@ -13,15 +13,23 @@ class MeshBuilderDocker:
 
     # need to generate input file with POINTFILENAME: That's it.
     # then
-    def start_docker_desktop(self):
+    def start_docker_desktop(self, attempts=0):
         """Ensure Docker is running, and if not, start it or prompt for installation."""
+        max_attempts = 5
         system = platform.system()
 
         try:
             self.client = docker.from_env()
             self.client.ping()
+            print("Docker is running.")
+            return True
         except docker.errors.DockerException:
-            print("Docker is not running. Attempting to start Docker...")
+            if attempts >= max_attempts:
+                print(f"Failed to start Docker after {max_attempts} attempts.")
+                self.prompt_docker_installation(system)
+                return False
+
+            print(f"Docker is not running. Attempt {attempts + 1}/{max_attempts} to start Docker...")
 
             if system == 'Windows':
                 subprocess.run(["powershell", "-Command", "Start-Process", "Docker Desktop"])
@@ -31,20 +39,18 @@ class MeshBuilderDocker:
                 subprocess.run(["systemctl", "start", "docker"])
             else:
                 print(f"Unsupported system: {system}")
-                return
-            time.sleep(15)
+                return False
 
-            try:
-                self.client.ping()
-                print("Docker started successfully.")
-            except docker.errors.DockerException:
-                print("Failed to start Docker. Please start Docker manually or install it if not available.")
-                if system == 'Windows':
-                    print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
-                elif system == 'Darwin':
-                    print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
-                elif system == 'Linux':
-                    print("Install Docker using your package manager, e.g., 'sudo apt install docker.io' for Ubuntu.")
+            time.sleep(15)
+            return self.start_docker_desktop(attempts + 1)
+
+    @staticmethod
+    def prompt_docker_installation(system):
+        print("Failed to start Docker. Please start Docker manually or install it if not available.")
+        if system in ['Windows', 'Darwin']:
+            print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
+        elif system == 'Linux':
+            print("Install Docker using your package manager, e.g., 'sudo apt install docker.io' for Ubuntu.")
 
     def initialize_docker_client(self):
         """Initialize the Docker client."""

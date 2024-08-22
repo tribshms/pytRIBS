@@ -7,6 +7,7 @@ from pytRIBS.shared.aux import Aux
 from pytRIBS.model.diagnose import Diagnostics
 from pytRIBS.model.preprocess import Preprocess
 from pytRIBS.shared.infile_mixin import InfileMixin
+from pytRIBS.shared.inout import InOut
 from pytRIBS.shared.shared_mixin import SharedMixin, Meta
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
@@ -18,6 +19,7 @@ from pytRIBS.model.run_docker import tRIBSDocker
 from pytRIBS.soil.soil import _Soil
 from pytRIBS.met.met import _Met
 from pytRIBS.mesh.mesh import Preprocess, GenerateMesh
+from pytRIBS.land.land import _Land
 
 
 class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
@@ -162,7 +164,7 @@ class Soil(_Soil):
         self.gwaterfile = options['gwaterfile']
 
 
-class Land():
+class Land(_Land):
     """
     A tRIBS Land Class.
 
@@ -182,7 +184,7 @@ class Land():
         self.landtablename = options['landtablename']
         self.lugrid = options['lugrid']
         self.optlanduse = options['optlanduse']
-        self.optluintercept = options['optluintercept']
+        self.optluintercept = options['optluinterp']
 
 
 class Mesh:

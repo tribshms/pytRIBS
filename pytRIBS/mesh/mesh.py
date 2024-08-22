@@ -355,18 +355,20 @@ class GenerateMesh:
 
         centers = np.array(list(centers))
 
-        med_distance, max_distance = self.distance_to_nearest_n(centers, n=6)
+        stream_points = self._generate_points_along_stream(centers)
+        stream_code = np.ones(len(stream_points))*3
+
+
+        med_distance, max_distance = self._distance_to_nearest_n(centers, n=6)
 
         centers, boundary_codes = self._filter_coords_within_geometry(centers, med_distance)
-
-        stream_points, stream_code = self._generate_points_along_stream(centers, max_distance)
 
         x, y = self.outlet.geometry[0].xy
         out_points = [[x[0], y[0]]]
         out_code = 2
 
-        centers = np.vstack((centers, stream_points, out_points))
-        boundary_codes = np.hstack((boundary_codes, stream_code, out_code))
+        centers = np.vstack((centers,stream_points, out_points))  # stream_points
+        boundary_codes = np.hstack((boundary_codes,stream_code,out_code))  # stream_code
 
         unique_centers, unique_indices = np.unique(centers, axis=0, return_index=True)
         centers = unique_centers
@@ -376,17 +378,20 @@ class GenerateMesh:
 
         return np.column_stack((centers, elevations, boundary_codes))
 
-    def _filter_coords_within_geometry(self, coords, buffer_distance, num_boundary_points=100):
+    def _filter_coords_within_geometry(self, coords, buffer_distance):
 
+        scale = 0.75
         original_watershed = self.watershed.geometry.iloc[0]
-        buffered_watershed = original_watershed.buffer(buffer_distance*0.75)
+        buffered_watershed = original_watershed.buffer(buffer_distance * scale)
 
-        # this is needed to keep outlet exposed
-        x, y = self.outlet.geometry[0].xy
-        outlet_point = Point(x[0], y[0])
-        outlet_buffer = outlet_point.buffer(buffer_distance*1.5)
+        num_boundary_points = int(ceil(buffered_watershed.length/(buffer_distance*scale)))
 
-        buffered_watershed = buffered_watershed.difference(outlet_buffer)
+        # # this is needed to keep outlet exposed
+        # x, y = self.outlet.geometry[0].xy
+        # outlet_point = Point(x[0], y[0])
+        # outlet_buffer = outlet_point.buffer(buffer_distance*1.5)
+        #
+        # buffered_watershed = buffered_watershed.difference(outlet_buffer)
 
         # boundary coords
         boundary_coords = np.array(list(
@@ -400,8 +405,8 @@ class GenerateMesh:
         # because the buffered watershed is altered you can have closed nodes within the watershed
         bcoords_within_orignal = contains(original_watershed, boundary_coords[:, 0], boundary_coords[:, 1])
 
-        boundary_coords = boundary_coords[~bcoords_within_orignal,:]
-        boundary_codes =  boundary_codes[~bcoords_within_orignal]
+        boundary_coords = boundary_coords[~bcoords_within_orignal, :]
+        boundary_codes = boundary_codes[~bcoords_within_orignal]
 
         all_coords = np.vstack([coords[within_original, :], boundary_coords])
         all_boundary_codes = np.concatenate([np.zeros(np.sum(within_original), dtype=int), boundary_codes])
@@ -427,7 +432,7 @@ class GenerateMesh:
         return zip(x_coords, y_coords)
 
     @staticmethod
-    def distance_to_nearest_n(points, n=6):
+    def _distance_to_nearest_n(points, n=6):
         """
         Calculate the average distance to the nearest n points for each point in a list.
 
@@ -477,33 +482,74 @@ class GenerateMesh:
 
         return elevations
 
-    def _generate_points_along_stream(self, coords, buffer_distance):
+    def _generate_points_along_stream(self, coords):
         """
+        Generate points along the stream network ensuring they are sufficiently spaced.
         """
+
         stream = self.stream_network
-        points_list = []
-        min_points_per_meter = .001
-        max_points_per_meter = 2
-        buffer_distance = buffer_distance / 2
+        dem_res = self.transform[0]
+
+        # Initialize the interior KDTree
+        interior_tree = cKDTree(coords)  # Assumes coords is a NumPy array
+
+        final_stream_pts = []
 
         for idx, row in stream.iterrows():
+            # Extract line and compute points
             line = row['geometry']
-            buffer = line.buffer(buffer_distance)
-            total_length = line.length
-            area = total_length * buffer_distance
-            if total_length != 0 and area != 0:
-                points_within_buffer = [Point(x, y) for x, y in coords if buffer.contains(Point(x, y))]
-                density = len(points_within_buffer) / area if area > 0 else 0
-                points_per_meter = min_points_per_meter + (max_points_per_meter - min_points_per_meter) * density
-                total_points = ceil(total_length * points_per_meter)
-                points = [line.interpolate(i / total_points, normalized=True) for i in range(total_points + 1)]
+            length = line.length
+            num_points = int(ceil(length / dem_res))
+            xy = [line.interpolate(i * dem_res) for i in range(num_points + 1)]
+            stream_xy = np.array([[p.x, p.y] for p in xy])
 
-                points_list.extend([(p.x, p.y) for p in points])
+            # Setup KDTree for stream points
+            stream_tree = cKDTree(stream_xy)
 
-        points_array = np.array(points_list)
-        code = np.ones(points_array.shape[0]) * 3
+            # Initialize stream points
+            begin, end = stream_xy[0, :], stream_xy[-1, :]
+            working_stream_pts = [begin, end]
+            temp_stream_pts = [begin]
 
-        return points_array, code
+            # Check and remove close interior points
+            dis_check, idx = stream_tree.query(coords, k=1)
+            close_interior_pts = np.where(dis_check <= dem_res)[0]
+
+            if len(close_interior_pts) > 0:
+                coords_list = coords.tolist()
+                for i in sorted(close_interior_pts, reverse=True):
+                    temp_stream_pts.append(coords_list.pop(i))
+                coords = np.array(coords_list)
+                interior_tree = cKDTree(coords)
+
+            # Initial conditions for while loop
+            distance = np.linalg.norm(working_stream_pts[0] - working_stream_pts[1])
+            dis_interior, _ = interior_tree.query(working_stream_pts[0], k=1)
+            dis_stream, idx = stream_tree.query(working_stream_pts[0], k=len(stream_xy))
+            idx_last = 0
+
+            # Iterate to find additional stream points
+            while distance > dis_interior:
+                ids = idx[dis_stream < dis_interior]
+                if len(ids) == 0:
+                    break
+                id_next = ids[-1]
+
+                if id_next < idx_last:
+                    id_next = ids[ids > idx_last][-1]
+
+                temp_stream_pts.append(stream_xy[id_next])
+                working_stream_pts = [stream_xy[id_next], end]
+                idx_last = id_next
+
+                distance = np.linalg.norm(working_stream_pts[0] - working_stream_pts[1])
+                dis_interior, _ = interior_tree.query(working_stream_pts[0], k=1)
+                dis_stream, idx = stream_tree.query(working_stream_pts[0], k=len(stream_xy))
+
+            temp_stream_pts.append(end)
+            final_stream_pts.extend(temp_stream_pts)
+
+        return final_stream_pts
 
     @staticmethod
     def convert_points_to_gdf(coords):
@@ -556,6 +602,6 @@ class GenerateMesh:
         meshbuild.run_container()
         meshbuild.execute_meshbuild_workflow(*partition_args)
         meshbuild.cleanup_container()
-        meshbuild.clean_directory()
+        # meshbuild.clean_directory()
 
         os.chdir(current)
