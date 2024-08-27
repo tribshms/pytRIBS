@@ -22,7 +22,7 @@ from pytRIBS.mesh.mesh import Preprocess, GenerateMesh
 from pytRIBS.land.land import _Land
 
 
-class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
+class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
     """
     A tRIBS Model class.
 
@@ -97,9 +97,9 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess):
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
 
     @staticmethod
-    def run_tribs_docker(volume_path, execution_mode='serial', num_processes=None):
+    def run_tribs_docker(volume_path, input_file, execution_mode='serial', num_processes=None):
         """Main function to run the TRIBSDocker class."""
-        docker_instance = tRIBSDocker(volume_path, execution_mode, num_processes)
+        docker_instance = tRIBSDocker(volume_path,input_file, execution_mode, num_processes)
         docker_instance.start_docker_desktop()
         docker_instance.initialize_docker_client()
         docker_instance.pull_image()

@@ -498,75 +498,33 @@ class InOut:
             'Parameters': parameters
         }
 
-    # def write_grid_data_file(self, grid_type):
-    #     """
-    #     Write out the content of a specified Grid Data File (.gdf)
-    #     :param grid_type: string set to "weather", "soil", of "land", with each corresponding to HYDROMETGRID, SCGRID, LUGRID
-    #     :return: dictionary containg keys and content: "Number of Parameters","Latitude", "Longitude","GMT Time Zone", "Parameters" (a  list of dicts)
-    #     """
-    #
-    #     if grid_type == "weather":
-    #         option = self.options["hydrometgrid"]["value"]
-    #     elif grid_type == "soil":
-    #         option = self.options["scgrid"]["value"]
-    #     elif grid_type == "land":
-    #         option = self.options["lugrid"]["value"]
-    #
-    #     parameters = []
-    #
-    #     with open(option, 'r') as file:
-    #         num_parameters = int(file.readline().strip())
-    #         location_info = file.readline().strip().split()
-    #         latitude, longitude, gmt_timezone = location_info
-    #
-    #         variable_count = 0
-    #
-    #         for line in file:
-    #             parts = line.strip().split()
-    #             if len(parts) == 3:
-    #                 variable_name, raster_path, raster_extension = parts
-    #                 variable_count += 1
-    #
-    #                 path_components = raster_path.split(os.path.sep)
-    #
-    #                 # Exclude the last directory as its actually base name
-    #                 raster_path = os.path.sep.join(path_components[:-1])
-    #
-    #                 if raster_path != "NO_DATA":
-    #                     if not os.path.exists(raster_path):
-    #                         print(
-    #                             f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
-    #                         raster_path = None
-    #                     elif os.path.getsize(raster_path) == 0:
-    #                         print(
-    #                             f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
-    #                         raster_path = None
-    #                 elif raster_path == "NO_DATA":
-    #                     print(
-    #                         f"Warning: No rasters set for variable '{variable_name}'")
-    #                     raster_path = None
-    #
-    #                 parameters.append({
-    #                     'Variable Name': variable_name,
-    #                     'Raster Path': raster_path,
-    #                     'Raster Extension': raster_extension
-    #                 })
-    #             else:
-    #                 print(f"Skipping invalid line: {line}")
-    #
-    #         if variable_count > num_parameters:
-    #             print(
-    #                 "Warning: The number of variables exceeds the number of parameters. This variable has been reset "
-    #                 "in dictionary.")
-    #
-    #     return {
-    #         'Number of Parameters': variable_count,
-    #         'Latitude': latitude,
-    #         'Longitude': longitude,
-    #         'GMT Time Zone': gmt_timezone,
-    #         'Parameters': parameters
-    #     }
-    #
+    @staticmethod
+    def write_grid_data_file(grid_file, data):
+        """
+        Writes the content of a dictionary to a specified Grid Data File (.gdf)
+        :param grid_file: path to write out grid file to.
+        :param data: dictionary containing keys and content: "Number of Parameters", "Latitude", "Longitude", "GMT Time Zone", "Parameters" (a list of dicts)
+        :return: None
+        """
+
+        with open(grid_file, 'w') as file:
+            # Write number of parameters
+            file.write(f"{data['Number of Parameters']}\n")
+
+            # Write location info (Latitude, Longitude, GMT Time Zone)
+            file.write(f"{data['Latitude']} {data['Longitude']} {data['GMT Time Zone']}\n")
+
+            # Write parameters
+            for param in data['Parameters']:
+                variable_name = param['Variable Name']
+                raster_path = param['Raster Path']
+                raster_extension = param['Raster Extension']
+
+                # # Check if the raster path exists, and if it doesn't, set it to "NO_DATA"
+                # if not os.path.exists(os.path.join(raster_path, raster_extension)):
+                #     raster_path = "NO_DATA"
+
+                file.write(f"{variable_name} {raster_path} {raster_extension}\n")
 
     @staticmethod
     def read_ascii(file_path):

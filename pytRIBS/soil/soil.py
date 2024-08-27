@@ -35,6 +35,31 @@ class _Soil:
         input = InOut.read_json(raster_dict, output_file_path, dtype)
         return input
 
+    def generate_uniform_groundwater(self, watershed_boundary, value, filename=None):
+
+        if filename is None:
+            gwfile = self.gwaterfile['value']
+            if gwfile is None:
+                print("A filename must be provided if a value has not been supplied to the attribute gwaterfile.")
+                return
+            filename = gwfile
+
+        gdf = watershed_boundary
+
+        bounds = gdf.total_bounds
+        xllcorner, yllcorner, xmax, ymax = bounds
+
+        cellsize = max(xmax - xllcorner, ymax - yllcorner)
+
+        with open(filename, 'w') as f:
+            f.write("ncols\t1\n")
+            f.write("nrows\t1\n")
+            f.write(f"xllcorner\t{xllcorner:.8f}\n")
+            f.write(f"yllcorner\t{yllcorner:.7f}\n")
+            f.write(f"cellsize\t{cellsize}\n")
+            f.write("NODATA_value\t-9999\n")
+            f.write(f"{value}\n")
+
     def read_soil_table(self, textures=False, file_path=None):
         """
         Soil Reclassification Table Structure (*.sdt)
@@ -640,7 +665,7 @@ class _Soil:
         ref_depth = '0-5cm'
 
         num_param = len(scgrid_vars)
-        lat = 35.11
+        lat = 35.11 #TODO these should not be hard coded!
         long = 112.65
         gmt = -7
         ext = 'asc'
@@ -656,7 +681,7 @@ class _Soil:
                     file.write(f"{scgrid}    {relative_path}{prefix}_{ref_depth}    {ext}\n")
 
         os.chdir(init_dir)
-        s
+
         # update Soil Class attributes
         self.soiltablename['value'] = f'{output_dir}/soils.sdt'
         self.scgrid['value'] = f'{output_dir}/scgrid.gdf'

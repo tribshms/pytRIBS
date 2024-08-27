@@ -5,54 +5,52 @@ import platform
 import time
 
 class tRIBSDocker:
-    def __init__(self, volume_path, execution_mode='serial', num_processes=None):
+    def __init__(self, volume_path, input_file, execution_mode='serial', num_processes=None):
         self.image_name = "tribs/tribs:latest"
         self.volume_path = volume_path
         self.execution_mode = execution_mode
         self.num_processes = num_processes
+        self.input_file = input_file
         self.client = None
         self.container = None
 
-    def start_docker_desktop(self):
+    def start_docker_desktop(self, attempts=0):
         """Ensure Docker is running, and if not, start it or prompt for installation."""
+        max_attempts = 5
         system = platform.system()
 
         try:
-            # Check if Docker is running
             self.client = docker.from_env()
             self.client.ping()
             print("Docker is running.")
+            return True
         except docker.errors.DockerException:
-            print("Docker is not running. Attempting to start Docker...")
+            if attempts >= max_attempts:
+                print(f"Failed to start Docker after {max_attempts} attempts.")
+                self.prompt_docker_installation(system)
+                return False
+
+            print(f"Docker is not running. Attempt {attempts + 1}/{max_attempts} to start Docker...")
 
             if system == 'Windows':
-                # Start Docker on Windows
                 subprocess.run(["powershell", "-Command", "Start-Process", "Docker Desktop"])
             elif system == 'Darwin':  # macOS
-                # Start Docker on macOS
                 subprocess.run(["open", "-a", "Docker"])
             elif system == 'Linux':
-                # Start Docker on Linux
                 subprocess.run(["systemctl", "start", "docker"])
             else:
                 print(f"Unsupported system: {system}")
-                return
+                return False
 
-            # Wait a bit for Docker to start
-            time.sleep(10)
-
-            # Check again if Docker is running
-            try:
-                self.client.ping()
-                print("Docker started successfully.")
-            except docker.errors.DockerException:
-                print("Failed to start Docker. Please start Docker manually or install it if not available.")
-                if system == 'Windows':
-                    print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
-                elif system == 'Darwin':
-                    print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
-                elif system == 'Linux':
-                    print("Install Docker using your package manager, e.g., 'sudo apt install docker.io' for Ubuntu.")
+            time.sleep(15)
+            return self.start_docker_desktop(attempts + 1)
+    @staticmethod
+    def prompt_docker_installation(system):
+        print("Failed to start Docker. Please start Docker manually or install it if not available.")
+        if system in ['Windows', 'Darwin']:
+            print("Download and install Docker Desktop from https://www.docker.com/products/docker-desktop")
+        elif system == 'Linux':
+            print("Install Docker using your package manager, e.g., 'sudo apt install docker.io' for Ubuntu.")
 
     def initialize_docker_client(self):
         """Initialize the Docker client."""
@@ -123,7 +121,7 @@ class tRIBSDocker:
 
     def run_serial(self):
         """Run the serial version of tRIBS."""
-        command = "/tribs/bin/tRIBS src/in_files/big_spring.in"
+        command = f"/tribs/bin/tRIBS {self.input_file}"
         self.execute_command_in_container(command)
 
     def run_parallel(self):
@@ -131,7 +129,7 @@ class tRIBSDocker:
         if self.num_processes is None or self.num_processes < 1:
             print("Error: The number of processes must be 1 or more for parallel execution.")
             return
-        command = f"mpirun -np {self.num_processes} /tribs/bin/tRIBSpar src/in_files/big_spring.in"
+        command = f"mpirun -np {self.num_processes} /tribs/bin/tRIBSpar {self.input_file}"
         self.execute_command_in_container(command)
 
     def execute(self):
