@@ -19,7 +19,7 @@ class WaterBalance:
     
         Parameters:
         - self: An self of the model containing element results.
-        - method: A string specifying the calculation method ('full') or a list of custom date ranges (min and max).
+        - method: A string specifying the calculation method ('full' or 'water_year') or a list of custom date ranges (min and max).
     
         Example:
         1. Calculate full water balance: get_element_water_balance(self, 'full')
@@ -38,12 +38,36 @@ class WaterBalance:
     # WATER BALANCE FUNCTIONS
     def _run_element_water_balance(self, element_id, method):
         """
-    
-        :param data:
-        :param porosity:
-        :param element_area:
-        :param method:
-        :return: pandas data frame with waterbalance information
+        Calculates and returns the water balance for a specified element.
+
+        This method computes the water balance for an element based on the provided method and returns it as a pandas DataFrame.
+        The water balance components are calculated over different time periods or methods depending on the input.
+
+        Parameters
+        ----------
+        element_id : int
+            The ID of the element for which to compute the water balance.
+
+        method : str, list of datetime, or tuple
+            Specifies the method for computing the water balance:
+            - `'full'`: Calculates the water balance for the entire available data range.
+            - A list of datetime objects: Specifies a custom range of dates to compute the water balance.
+            - A tuple containing start and end dates: Used to determine the time periods for water balance calculation.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing the water balance components with columns:
+            - `Time`: Time of the data points.
+            - `dS`: Change in storage.
+            - `nQ`: Net fluxes including runoff.
+
+        Notes
+        -----
+        - If the `method` is `'full'` or a list, the resulting DataFrame has a single row with the aggregated water balance for the specified range.
+        - If `method` is a tuple, the DataFrame has multiple rows, each corresponding to a time period within the specified range.
+        - The `dS` column represents the sum of changes in unsaturated, saturated, canopy SWE, SWE, and canopy storage.
+        - The `nQ` column represents net fluxes, with surface runoff converted to negative values.
         """
         data = self.element[element_id]
         if isinstance(data, dict):
@@ -96,11 +120,45 @@ class WaterBalance:
 
     def _element_wb_components(self, element_id, begin, end):
         """
-        Computes water balance calculations for an individual computational element or node over a specified time frame. Data = pandas data
-        frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
-        porosity is well, porosity, and element area is surface area of voronoi polygon. Returns a dictionary with
-        individual water components, keys with the prescript d indicate change in storage (i.e. delta) and n
-        indicates net cumulative flux.
+        Computes water balance calculations for an individual computational element over a specified time frame.
+
+        This method calculates the change in storage and net cumulative fluxes for various water balance components
+        based on the data from the specified element's .pixel file within the given time period.
+
+        Parameters
+        ----------
+        element_id : int
+            The ID of the element for which to compute the water balance components.
+
+        begin : datetime
+            The start date and time for the calculation period.
+
+        end : datetime
+            The end date and time for the calculation period.
+
+        Returns
+        -------
+        dict
+            A dictionary containing water balance components with the following keys:
+            - `dUnsat` : Change in unsaturated storage (mm).
+            - `dSat` : Change in saturated storage (mm).
+            - `dCanopySWE` : Change in canopy snow water equivalent (mm).
+            - `dSWE` : Change in snow water equivalent (mm).
+            - `dCanopy` : Change in canopy storage (mm).
+            - `nP` : Net precipitation over the period (mm).
+            - `nET` : Net evapotranspiration over the period (mm).
+            - `nQsurf` : Net surface runoff over the period (mm).
+            - `nQunsat` : Net unsaturated zone runoff over the period (mm).
+            - `nQsat` : Net saturated zone runoff over the period (mm).
+
+        Notes
+        -----
+        - The values for `d*` keys represent the change in the corresponding water component from the start to the end
+          of the specified period.
+        - The values for `n*` keys represent the total cumulative flux of the corresponding water component over the
+          entire period.
+        - Assumes that `df['Time']` is already in a suitable format for comparison with `begin` and `end`.
+
         """
     
         # data frame with continuous water balance components
@@ -129,11 +187,37 @@ class WaterBalance:
     
     def _run_mrf_water_balance(self, method):
         """
-    
-        :param data:
-        :param porosity:
-        :param method:
-        :return: pandas data frame with waterbalance information
+        Computes water balance calculations for the MRF model over a specified time frame.
+
+        This method calculates the water balance components for the MRF model based on the provided time frame
+        and method. It supports different methods for specifying the time period and computes the net and change
+        in storage values for various water components.
+
+        Parameters
+        ----------
+        method : str, list, or other
+            Defines the method for calculating the water balance:
+            - `'full'`: Uses the entire time period from the data.
+            - `list`: A list of datetime objects defining the time period.
+            - `other`: A method for specifying the time periods, which is processed to determine the begin and end dates.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing the water balance components with the following columns:
+            - `dS` : Change in storage (sum of changes in unsaturated, saturated, canopy SWE, SWE, and canopy storage).
+            - `nQ` : Net fluxes (negative surface runoff, plus unsaturated and saturated zone runoff).
+            - Other columns include net and change in storage components like `dUnsat`, `dSat`, `dCanopySWE`,
+              `dSWE`, `dCanopy`, `nP`, `nET`, `nQsurf`, `nQunsat`, and `nQsat`.
+
+        Notes
+        -----
+        - Assumes `self.mrf['mrf']` contains a DataFrame with a `'Time'` column and other necessary water balance data.
+        - The `waterbalance` dictionary is updated with net and change in storage components, as well as net fluxes.
+        - The `method` parameter determines how the time frame is defined and processed. If `method` is `'full'`
+          or a list, the water balance is calculated for the entire period or specified periods, respectively.
+        - For other methods, the `_water_balance_dates` function is used to determine the start and end dates.
+
         """
         global waterbalance
         data = self.mrf['mrf']
@@ -185,11 +269,41 @@ class WaterBalance:
 
     def _mrf_wb_components(self, begin, end):
         """
-        Computes water balance calculations for an individual computational mrf or node over a specified time frame. Data = pandas data
-        frame of .pixel file, begin is start date, end is end date, bedrock depth is the depth to bedrock,
-        porosity is well, porosity, and mrf area is surface area of voronoi polygon. Returns a dictionary with
-        individual water components, keys with the prescript d indicate change in storage (i.e. delta) and n
-        indicates net cumulative flux.
+        Computes water balance calculations for the MRF model over a specified time frame.
+
+        This method calculates various water balance components for the MRF model based on the given time period.
+        The calculations are performed on data retrieved from the MRF model and are summarized in a dictionary
+        with net and change in storage values for various water components.
+
+        Parameters
+        ----------
+        begin : datetime
+            The start date of the time period for which the water balance is calculated.
+
+        end : datetime
+            The end date of the time period for which the water balance is calculated.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the water balance components with the following keys:
+            - `dSat` : Change in saturated storage (difference between the initial and final values).
+            - `dUnsat` : Change in unsaturated storage (difference between the final and initial values).
+            - `dCanopySWE` : Change in canopy snow water equivalent (difference between the final and initial values).
+            - `dSWE` : Change in snow water equivalent (difference between the final and initial values).
+            - `dCanopy` : Change in canopy storage (currently set to 0; future updates may be required).
+            - `nP` : Net precipitation (sum of precipitation values over the time period).
+            - `nET` : Net evapotranspiration (sum of evapotranspiration values over the time period).
+            - `nQsurf` : Net surface runoff (sum of surface runoff values over the time period).
+            - `nQunsat` : Net unsaturated zone runoff (assumed to be 0 due to model assumptions).
+            - `nQsat` : Net saturated zone runoff (assumed to be 0 due to model assumptions).
+
+        Notes
+        -----
+        - Assumes `self.get_mrf_wb_dataframe()` returns a DataFrame with water balance components and a `'Time'` column.
+        - Assumptions in the model include closed boundaries at divide and outlet, leading to zero values for `nQunsat` and `nQsat`.
+        - Canopy storage is currently not updated in the MRF model; this is marked as TODO for future updates.
+
         """
     
         # logical index for calculating water balance

@@ -11,9 +11,16 @@ import requests
 from io import BytesIO
 from pytRIBS.shared.inout import InOut
 from pytRIBS.shared.aux import Aux
+from pytRIBS.soil.soil import _Soil
 
 
 class _Met(Aux,InOut):
+    """
+    Framework for Met Class. See classes.py
+    """
+    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+        lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
+        return lat, lon, gmt
     def get_nldas_point(self, centroids, begin, end, epsg=None, **hyriver_env_vars):
         """
         Fetches NLDAS data for a given set of coordinates and time period, with optional caching and environment variable configuration.
@@ -420,13 +427,38 @@ class _Met(Aux,InOut):
         self.write_met_sdf(met_path, met_sdf_list)
         self.write_precip_sdf(precip_sdf_list, precip_path)
 
-    def run_met_workflow(self, watershed, begin, end, gmt, elev):
+    def run_met_workflow(self, watershed, begin, end, elev):
+        """
+        Executes the meteorological data workflow for a given watershed, retrieving and processing meteorological data.
+
+        This method performs the following steps:
+        - Calculates the geographic centroid of the provided watershed.
+        - Retrieves meteorological data for the centroid from the NLDAS dataset.
+        - Converts and writes the NLDAS time series data to the specified format.
+
+        :param watershed: A Shapely polygon representing the watershed area. The centroid of this polygon is used for data retrieval.
+        :type watershed: shapely.geometry.Polygon
+
+        :param begin: The start date for the meteorological data retrieval.
+        :type begin: str
+
+        :param end: The end date for the meteorological data retrieval.
+        :type end: str
+
+        :param elev: The elevation of the watershed centroid, used in the data processing.
+        :type elev: float
+
+        :return: A DataFrame containing the retrieved and processed NLDAS meteorological data for the specified centroid.
+        :rtype: pandas.DataFrame
+        """
+
         met_dir = os.path.dirname(self.hydrometstations['value'])
-        centroids = [(watershed.centroid.x[0], watershed.centroid.y[0])]
-        lat, long = self.utm_to_latlong(centroids[0][0], centroids[0][1])
+        lat, lon, gmt = self.polygon_centroid_to_geographic(watershed)
+        x, y = watershed.centroid.x, watershed.centroid.y
+        centroids = [(x,y)]
         nldas_df = self.get_nldas_point(centroids, begin, end, epsg=self.meta['EPSG'],
                                         HYRIVER_CACHE_NAME=f"{met_dir}/cache/aiohttp_cache.sqlite")
-        coords = [long, watershed.centroid.x[0], lat, watershed.centroid.y[0], elev]
+        coords = [lon, x, lat, y, elev]
         self.convert_and_write_nldas_timeseries([nldas_df.copy()],[coords], gmt)
 
         return nldas_df

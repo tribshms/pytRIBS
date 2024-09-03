@@ -11,6 +11,7 @@ import json
 
 
 class InOut:
+    "Shared Class for managing reading and writing tRIBS files"
     def read_point_files(self):
         """
         Returns Pandas dataframe of nodes or point used in tRIBS mesh.
@@ -292,6 +293,27 @@ class InOut:
 
     @staticmethod
     def read_met_station(file_path):
+        """
+        Reads a meteorological station data file and processes it into a pandas DataFrame with a datetime index.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to the meteorological station data file. The file should be in a space-separated format with columns for
+            year, month, day, and hour.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame containing the meteorological data with a single 'date' column as a datetime index, and the remaining
+            columns from the input file.
+
+        Notes
+        -----
+        - The function expects the input file to have columns 'Y', 'M', 'D', and 'H' for year, month, day, and hour, respectively.
+        - The columns for year, month, day, and hour are converted into a single 'date' column of datetime type.
+        - The original columns 'Y', 'M', 'D', and 'H' are dropped from the DataFrame after the datetime conversion.
+        """
         # TODO add var for specifying Station ID and doc
         df = pd.read_csv(file_path, header=0, sep=r'\s+')
         # convert year, month, day to datetime and drop columns
@@ -569,14 +591,11 @@ class InOut:
 
         profile.update(dtype=dtype)
 
-
-
-        # Check if the driver is set to 'AAIGrid' (ASCII format)
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
             # Update the profile for ASCII raster format
             profile.update(
                 count=1,
-                compress=None,
+                #compress=None,
                 driver='AAIGrid',  # ASCII Grid format
                 nodata=-9999.0,
             )

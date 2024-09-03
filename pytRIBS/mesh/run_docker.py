@@ -4,7 +4,19 @@ import subprocess
 import platform
 import time
 
+
 class MeshBuilderDocker:
+    """
+    A class to manage the execution of the MeshBuilder tool in a Docker container.
+
+    This class facilitates setting up and running the MeshBuilder tool within a Docker container. It allows for specifying
+    the Docker image and volume path. The class handles the creation and management of Docker containers for executing the
+    MeshBuilder tool.
+
+    :param volume_path: Path to the directory that will be mounted as a volume inside the Docker container.
+    :type volume_path: str
+    """
+
     def __init__(self, volume_path):
         self.image_name = "tribs/meshbuilder:latest"
         self.volume_path = volume_path
@@ -96,7 +108,7 @@ class MeshBuilderDocker:
         try:
             print(f"Executing command in the container: {command}")
             # Use the shell to run commands
-            #exec_command = f"bash -c 'cd /tribs/shared && {command}'"
+            # exec_command = f"bash -c 'cd /tribs/shared && {command}'"
             exit_code, output = self.container.exec_run(command, tty=True, stream=True)
             print("Command executed. Output:")
             for line in output:
@@ -154,9 +166,9 @@ class MeshBuilderDocker:
         for filename in os.listdir(directory_path):
             file_path = os.path.join(directory_path, filename)
 
-            if os.path.isfile(file_path) and not filename.endswith(('.in', '.points', '.reach')):
+            if os.path.isfile(file_path) and not filename.endswith(('.in', '.points', '.reach', '.out')):
                 try:
                     os.remove(file_path)
-                    #print(f"Deleted: {file_path}")
+                    # print(f"Deleted: {file_path}")
                 except Exception as e:
                     print(f"Failed to delete {file_path}. Reason: {e}")

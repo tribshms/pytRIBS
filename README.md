@@ -2,13 +2,20 @@
 A pre-to-post processing python package designed to allow users to setup, simulate, and analyze TIN-based Real-time Integrated Basin Simulator (tRIBS) model runs through a python interface.
 Note this packages is currently under development and is subject to further changes. Additionally, much of the functionality here has had limited testing, consequently responsibility is on the user to verify package functionality. 
 
+## Known Issues
+* Downloading NLDAS data is limited to a year or two, otherwise NaNs are introduced. This attribute to the pynldas-2 library, but w
+
 ## Release/Version Notes
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
 this package SHOULD NOT be considered stable.
 ### Verison 0.5.0 (in development)
-* Added in unsupervised classification funtion for NAIP image in Land Class
+* Added in unsupervised classification function for NAIP image and Tree hieght rasters in Land Class
 * Finalized Mesh Class, with dependence on a Preprocessing Class (DEM and GIS analysis) and  MeshGeneration Class
 * Model class can be initialized with combination of Met, Soil, Land, and Mesh classes as well as an input file
+* Soil workflow update: input is now shapely polygon, not geopandas geodataframe
+* Added in function to find centroid of watershed
+* Updated docker workflows for both tRIBS and MeshBuilder
+* Added in docs--needs fine tuning
 ### Version 0.4.0 (07/11/2024)
 * added in functionality for met class, can now download and subset NLDAS data with watershed shapefile
 * changed key_word in Model.options dictionary to keyword

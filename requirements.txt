@@ -18,4 +18,5 @@ gdal
 scikit-learn
 PyWavelets
 docker
+timezonefinder
 

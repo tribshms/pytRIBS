@@ -5,8 +5,25 @@ import platform
 import time
 
 class tRIBSDocker:
+    """
+    A class to manage the execution of the tRIBS model in a Docker container.
+
+    This class provides functionality to set up and run the tRIBS model within a Docker container. It allows for specifying
+    the Docker image, volume path, execution mode, and number of processes. The class handles the creation and management
+    of Docker containers for executing the tRIBS model.
+
+    :param volume_path: Path to the directory that will be mounted as a volume inside the Docker container.
+    :type volume_path: str
+    :param input_file: Path to the input file used by the tRIBS model.
+    :type input_file: str
+    :param execution_mode: Mode of execution for the tRIBS model. Can be 'serial' or 'parallel'. Default is 'serial'.
+    :type execution_mode: str, optional
+    :param num_processes: Number of processes to use for parallel execution. Required if execution_mode is 'parallel'.
+    :type num_processes: int, optional
+    """
+
     def __init__(self, volume_path, input_file, execution_mode='serial', num_processes=None):
-        self.image_name = "tribs/tribs:latest"
+        self.image_name = "tribs/tribs:dev" # TODO this needs to be updated once stable version is added to latest
         self.volume_path = volume_path
         self.execution_mode = execution_mode
         self.num_processes = num_processes

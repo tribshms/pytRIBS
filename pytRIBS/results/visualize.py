@@ -5,14 +5,39 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 class Viz:
+    "Framework class for Results Class"
     @staticmethod
     def plot_water_balance(waterbalance, saved_fig=None):
         """
+        Plots water balance components and saves the figure if a filename is provided.
 
-        :param saved_fig:
-       :param waterbalance:
-       :return:
-       """
+        This function creates a bar plot of water balance components, including precipitation (`nP`), runoff (`nQ`),
+        evapotranspiration (`nET`), and changes in storage (`dS`). It displays labels for the difference between
+        precipitation and the sum of other components. The plot is saved to a file if `saved_fig` is provided.
+
+        Parameters
+        ----------
+        waterbalance : pd.DataFrame
+            DataFrame containing water balance components with columns:
+            - `nP`: Precipitation
+            - `nQ`: Runoff
+            - `nET`: Evapotranspiration
+            - `dS`: Change in storage
+
+        saved_fig : str, optional
+            Filename to save the figure. If not provided, the figure is not saved.
+
+        Returns
+        -------
+        tuple
+            A tuple containing the `matplotlib.figure.Figure` and `matplotlib.axes.Axes` objects for the plot.
+
+        Notes
+        -----
+        - The plot includes a stacked bar chart of `nQ`, `nET`, and `dS` with different colors.
+        - Labels indicate the net difference between `nP` and the sum of `dS`, `nQ`, and `nET`.
+        - The plot will automatically format the x-axis dates and display mean difference in the plot.
+        """
 
         # plt.style.use('bmh')
         barwidth = 0.25

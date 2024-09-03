@@ -7,8 +7,32 @@ import pandas as pd
 
 
 class Read():
+    """ Framework class for Results class"""
 
     def get_qout_results(self):
+        """
+        Reads the outlet discharge and water level data from a specified `.qout` file.
+
+        This method reads a `.qout` file containing outlet discharge and water level data, parses it into a DataFrame, and converts
+        the time information from hours since the start date to actual timestamps.
+
+        The `.qout` file is expected to be named by appending `'_Outlet.qout'` to the value of the `"outhydrofilename"` option
+        from the `self.options` dictionary.
+
+        The method performs the following steps:
+        1. Reads the `.qout` file into a DataFrame with columns `['Time_hr', 'Qstrm_m3s', 'Hlev_m']`.
+        2. Converts the `Time_hr` column from hours since the start date into actual timestamps.
+        3. Returns the DataFrame with an additional `Time` column representing the timestamps.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame containing columns `['Time_hr', 'Qstrm_m3s', 'Hlev_m', 'Time']`, where:
+            - `Time_hr` is the time in hours since the start date.
+            - `Qstrm_m3s` is the discharge in cubic meters per second.
+            - `Hlev_m` is the water level in meters.
+            - `Time` is the converted timestamp corresponding to each time step.
+        """
         # currently only read for outlet, neet to add for hydronodelist
         qout_file = self.options["outhydrofilename"]["value"]+'_Outlet.qout'
         qout_df = pd.read_csv(qout_file, header=None, names=['Time_hr', 'Qstrm_m3s', 'Hlev_m'], skiprows=1, sep='\t')
@@ -20,7 +44,28 @@ class Read():
         return qout_df
     def get_mrf_results(self, mrf_file=None):
         """
+        Reads and processes the `.mrf` file containing model results.
 
+        If `mrf_file` is not provided, constructs the filename using the value of the `"outhydrofilename"` option
+        from `self.options`, combined with the runtime value, and appends `"_00.mrf"` to it.
+
+        This method performs the following steps:
+        1. Reads the column names and units from the first two rows of the `.mrf` file.
+        2. Loads the data into a DataFrame, skipping the first two rows which contain metadata.
+        3. Assigns the read column names to the DataFrame and adds the units as metadata.
+        4. Converts the `Time` column from hours since the start date to actual timestamps.
+        5. Updates the `self.mrf` attribute with the results, excluding extra time steps that may be included in the file.
+
+        Parameters
+        ----------
+        mrf_file : str, optional
+            The path to the `.mrf` file. If not provided, the filename is constructed based on the `"outhydrofilename"` and `"runtime"`
+            options from `self.options`.
+
+        Returns
+        -------
+        None
+            This method updates the `self.mrf` attribute with the processed results DataFrame.
         """
         if mrf_file is None:
             runtime = self.options["runtime"]["value"]
@@ -56,10 +101,23 @@ class Read():
 
     def get_element_results(self):
         """
-        Function assigns a dictionary to self as self.element_results. The keys in the dictionary represent a data
-        frame with the content of the .invpixel file and each subsequent node. Key for .invpixel is "invar",
-        and for nodes is simply the node ID. For each node this function reads in element file and create data frame
-        of results and is assigned to the aforementioned dictionary.
+        Reads and processes element result files, and assigns them to `self.element_results`.
+
+        This method performs the following steps:
+        1. Constructs the directory path from the `"outfilename"` option in `self.options`.
+        2. Searches for files in the directory that match a certain pattern (`*.pixel`).
+        3. For each matching file, extracts the node ID from the filename.
+        4. Reads the content of each element file and creates a DataFrame of results.
+        5. Stores the results in a dictionary, with keys representing node IDs and the value being another dictionary
+           containing the `pixel` DataFrame and a placeholder for `waterbalance`.
+
+        The resulting dictionary is assigned to `self.element_results`. The key `"invar"` is used for the `.invpixel` file,
+        while node-specific files use their respective node IDs as keys.
+
+        Returns
+        -------
+        None
+            This method updates the `self.element_results` attribute with the processed data.
         """
         # List to store first integers
         node_id = []
@@ -96,7 +154,22 @@ class Read():
 
     def read_element_files(self, element_results_file):
         """
-        Reads in .pixel from tRIBS model results and updates hourly timestep to time
+        Reads a `.pixel` file from tRIBS model results and converts hourly time steps to datetime.
+
+        This method performs the following steps:
+        1. Reads the content of the specified `.pixel` file into a pandas DataFrame.
+        2. Converts the `Time_hr` column from hourly timesteps into datetime objects based on the starting date.
+        3. Adds a `Time` column to the DataFrame that contains the converted datetime values.
+
+        Parameters
+        ----------
+        element_results_file : str
+            Path to the `.pixel` file containing the tRIBS model results.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the results with an updated `Time` column reflecting datetime values.
         """
 
         results_data_frame = pd.read_csv(element_results_file, sep=r"\s+", header=0)
@@ -110,6 +183,34 @@ class Read():
         return results_data_frame
 
     def get_element_wb_dataframe(self, element_id):
+        """
+        Generates a DataFrame with water balance results for a specified element.
+
+        This method retrieves water balance data for the given `element_id` and calculates various metrics based on
+        the pixel data. It uses attributes like porosity and element area from the spatial variables to compute
+        values such as saturated water, canopy snow water equivalent, and surface runoff.
+
+        Parameters
+        ----------
+        element_id : int
+            Identifier for the element whose water balance data is to be retrieved.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing water balance metrics with the following columns:
+            - `Time`: Time series of the data
+            - `Unsat_mm`: Unsaturated moisture in mm
+            - `Sat_mm`: Saturated moisture in mm, adjusted by porosity
+            - `CanopySWE_mm`: Canopy snow water equivalent in mm
+            - `SWE_mm`: Snow water equivalent in mm
+            - `Canop_mm`: Canopy storage in mm
+            - `P_mm_h`: Precipitation in mm/h
+            - `ET_mm_h`: Evapotranspiration in mm/h, adjusted for sublimation and evaporation
+            - `Qsurf_mm_h`: Surface runoff in mm/h
+            - `Qunsat_mm_h`: Unsaturated runoff in mm/h
+            - `Qsat_mm_h`: Saturated runoff in mm/h, adjusted by element area
+        """
 
         pixel = self.element[element_id]
         if isinstance(pixel, dict):
@@ -136,6 +237,29 @@ class Read():
         return df
 
     def get_mrf_wb_dataframe(self):
+        """
+        Generates a DataFrame with water balance results based on the MRF data.
+
+        This method computes water balance metrics from the MRF data using attributes such as drainage area, porosity,
+        and various MRF parameters. The resulting DataFrame includes calculated values for unsaturated moisture,
+        saturated moisture, snow water equivalent, and other hydrological metrics.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing water balance metrics with the following columns:
+            - `Time`: Time series of the data
+            - `Unsat_mm`: Unsaturated moisture in mm, calculated using the product of moisture storage, drainage weight, and porosity
+            - `Sat_mm`: Saturated moisture in mm, calculated using the product of drainage weight and porosity
+            - `CanopySWE_mm`: Canopy snow water equivalent in mm
+            - `SWE_mm`: Snow water equivalent in mm
+            - `Canop_mm`: Canopy storage in mm (currently set to 0 as it is not averaged)
+            - `P_mm_h`: Precipitation in mm/h
+            - `ET_mm_h`: Evapotranspiration in mm/h, adjusted for sublimation and evaporation
+            - `Qsurf_mm_h`: Surface runoff in mm/h, adjusted for drainage area
+            - `Qunsat_mm_h`: Unsaturated runoff in mm/h (currently set to 0; subject to validation)
+            - `Qsat_mm_h`: Saturated runoff in mm/h (currently set to 0; subject to validation)
+        """
         drainage_area = self.int_spatial_vars['VAr'].sum()  ## in m, TODO investigate why sum 'VAr' != max CAr ?
         weights = self.int_spatial_vars['VAr'].values / drainage_area
         porosity = np.sum(self.int_spatial_vars['ThetaS'].values * weights)

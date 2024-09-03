@@ -14,13 +14,16 @@ from shapely.geometry import Polygon
 
 
 class Meta:
+    """
+    Class for project metadata/
+    """
     def __init__(self):
         self.meta = {"Name": None, "Scenario": None, "EPSG": None}
 
 
 class SharedMixin:
     """
-    Shared methods betweens the pytRIBS Classes Model & Results.
+    Shared methods betweens the pytRIBS Classes.
     """
 
     def read_input_file(self, file_path):
@@ -284,7 +287,6 @@ class SharedMixin:
     def merge_parallel_spatial_files(self, suffix="_00d", dtime=0, write=True, header=True, colnames=None,
                                      single=True):
         """
-        TODO: Rename as get_spatial_files, and enable it to read parallel or serial results.
         Returns dictionary of combined spatial outputs for intervals specified by tRIBS option: "SPOPINTRVL".
         :param str suffix: Either _00d for dynamics outputs or _00i for time-integrated ouputs.
         :param int dtime : Option to specify time step at which to start merge of files.
@@ -293,6 +295,7 @@ class SharedMixin:
         :param bool colnames: If header = False, column names can be provided for the dataframe--but it is expected the first column is ID.
         :param bool single: If single = True then only spatial files specified at dtime are merged.
         :return: Dictionary of pandas dataframes.
+        # TODO: Rename as get_spatial_files, and enable it to read parallel or serial results.
         # TODO add a clean option to store .0 t0 .n files, then zip, probably would only want this if you are saving them out.
         # TODO also return file names if saved out, also add serial version or a serial flag...so people can reaou
         """
@@ -359,8 +362,42 @@ class SharedMixin:
 
     def mesh2vtk(self, outfile):
         """
+        Converts mesh data files into a VTK file format for visualization.
 
-        :return:
+        This function reads node, triangle, and elevation data from files and writes them to a VTK file.
+        The VTK file will be an unstructured grid dataset containing points and cells, with associated scalar data.
+
+        Parameters
+        ----------
+        outfile : str
+            Path to the output VTK file where the mesh data will be written.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - The function expects the following files in the directory specified by the 'outfilename' option:
+            - A node file with a `.nodes` extension containing node coordinates and boundary codes.
+            - A triangle file with a `.tri` extension containing triangle vertex indices.
+            - A z-file with a `.z` extension containing elevation values.
+        - The node file should contain columns for x, y coordinates, and a boundary code.
+        - The triangle file should contain columns for vertex indices of triangles.
+        - The z-file should contain elevation values for each node.
+        - The output VTK file will include point data (coordinates and elevations) and cell data (triangles).
+        - Boundary codes are used to set NaN values in the altitude scalars in the VTK file.
+
+        Example
+        -------
+        >>> self.mesh2vtk('output_mesh.vtk')
+
+        Raises
+        ------
+        FileNotFoundError
+            If the required node, triangle, or z files cannot be found in the specified directory.
+        IndexError
+            If there is an issue reading data from the node, triangle, or z files, which may indicate file corruption.
         """
         outfilename = self.options["outfilename"]["value"]
         last_slash_index = outfilename.rfind('/')
@@ -491,9 +528,48 @@ class SharedMixin:
 
     @staticmethod
     def plot_mesh(mesh, scalar=None, **kwargs):
-
         """
-        Todo: Need to create and exaggeration argument, maybe though can be passed as kwarg
+        Plots a 3D mesh using PyVista with optional scalar data.
+
+        This method visualizes a mesh object, optionally using scalar data to color the mesh. It handles meshes
+        from a file path or PyVista object and allows for customizing the plot with additional keyword arguments.
+
+        Parameters
+        ----------
+        mesh : str or pv.PolyData
+            If a string is provided, it should be a path to a mesh file that will be read using PyVista. If a PyVista
+            `PolyData` object is provided, it will be used directly for plotting.
+
+        scalar : array-like, optional
+            Scalar data to be used for coloring the mesh. If not provided, it defaults to the 'Elevation' array of the
+            mesh. The scalar data must match the number of points or cells in the mesh.
+
+        **kwargs : keyword arguments
+            Additional keyword arguments passed to `pyvista.Plotter.add_mesh` for further customization of the plot.
+
+        Returns
+        -------
+        pv.Plotter
+            A PyVista `Plotter` object configured to display the mesh.
+
+        Notes
+        -----
+        - If `scalar` is provided, it will be used to color the mesh. Closed points or cells (where 'BoundaryCode' is 1)
+          are set to NaN.
+        - If the length of `scalar` matches the number of points, NaNs are assigned to closed points.
+        - If the length of `scalar` matches the number of cells, NaNs are assigned to closed cells.
+        - The plot camera is set to view from the top-down (xy plane) with north up.
+
+        Example
+        -------
+        >>> mesh = pv.read('path_to_mesh_file.vtk')
+        >>> plotter = plot_mesh(mesh, scalar=my_scalar_data, cmap='viridis')
+        >>> plotter.show()
+
+        Raises
+        ------
+        ValueError
+            If the length of `scalar` does not match either the number of points or cells in the mesh.
         """
         if isinstance(mesh, str):
             # check if path exists
@@ -521,6 +597,44 @@ class SharedMixin:
         return plotter
 
     def get_invariant_properties(self):
+        """
+        Reads and processes invariant spatial properties based on the parallel mode setting.
+
+        This method handles the integration of spatial variables and Voronoi files depending on the mode specified
+        in the options. It merges parallel files or reads single files, computes weights, and loads Voronoi data.
+
+        The method does the following:
+        - Checks the `parallelmode` setting to determine if parallel processing is enabled.
+        - Merges parallel spatial files if in parallel mode, or reads a single spatial file if not.
+        - Computes weights based on the `VAr` column if in non-parallel mode.
+        - Loads Voronoi files based on the `parallelmode` setting.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - If `parallelmode` is set to 1, the method merges files with a `_00i` suffix and integrates spatial variables
+          based on runtime values.
+        - If `parallelmode` is set to 0, it reads a single file based on the `outfilename` and `runtime` values,
+          and computes weights using the `VAr` column.
+        - Voronoi files are read or merged based on the parallel mode setting.
+        - If the `parallelmode` is not recognized, it prints an error message and sets the spatial variables and Voronoi data to `None`.
+
+        Example
+        -------
+        >>> obj.get_invariant_properties()
+
+        Raises
+        ------
+        ValueError
+            If there are issues merging files or reading Voronoi data.
+        """
 
         parallel_flag = int(self.options["parallelmode"]['value'])
 

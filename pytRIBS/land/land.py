@@ -13,6 +13,10 @@ class _Land(InOut):
         cmap = Aux.discrete_cmap(N, base_cmap)
         return cmap
     @staticmethod
+    def update_landfiles_with_dates(file_path, date_str):
+        Aux.rename_file_with_date(file_path,date_str)
+        return
+    @staticmethod
     def unsupervised_classification_naip(image_path, output_file_path, method='NDVI', n_clusters=4,
                                          plot_result=True):
         """
@@ -173,9 +177,9 @@ class _Land(InOut):
                             "Min value must be greater than previous max value, or equal only on the first iteration.")
 
                 if min_val != max_val:
-                    classified_data[(height_data > min_val) & (height_data <= max_val)] = class_val
+                    classified_data[(height_data > min_val) & (height_data <= max_val)] = int(class_val)
                 elif i == 0 and min_val == max_val:
-                    classified_data[(height_data == max_val)] = class_val
+                    classified_data[(height_data == max_val)] = int(class_val)
                 else:
                     raise ValueError("Min and max can only be equal on the first iteration.")
 
@@ -215,3 +219,42 @@ class _Land(InOut):
             })
 
         return classified_data, class_list
+    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+        lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
+        return lat, lon, gmt
+    def create_gdf_content(self,parameters,watershed):
+        """
+        Create a dictionary containing geographic and parameter information for a watershed.
+
+        This function computes the geographic centroid of the given watershed polygon,
+        converts it to geographic coordinates (latitude and longitude), and then creates
+        a dictionary containing the number of parameters, the centroid's geographic location,
+        the GMT time zone, and a list of parameters.
+
+        :param parameters: A list where each element is a list containing:
+            - parameter name (str): Name of the parameter (e.g., 'VH').
+            - raster path (str): The file path to the specified raster.
+            - file extension (str): The extension of the raster file (e.g., '.tif').
+        :type parameters: list of lists
+
+        :param watershed: The watershed boundary used to compute the centroid and derive geographic coordinates.
+        :type watershed: GeoDataFrame or shapely.geometry.Polygon
+
+        :returns: A dictionary containing the following key-value pairs:
+            - 'Number of Parameters': int, the number of parameters provided.
+            - 'Latitude': float, the latitude of the watershed centroid in geographic coordinates.
+            - 'Longitude': float, the longitude of the watershed centroid in geographic coordinates.
+            - 'GMT Time Zone': int, the GMT time zone derived from the geographic coordinates.
+            - 'Parameters': list, the original list of parameters provided.
+        :rtype: dict
+        """
+        num_params = len(parameters)
+        lat, lon, gmt = self.polygon_centroid_to_geographic(watershed)
+
+        land_gdf_content = {'Number of Parameters': num_params,
+                            'Latitude': lat,  # update
+                            'Longitude': lon,
+                            'GMT Time Zone': gmt,
+                            'Parameters': parameters
+                            }
+        return  land_gdf_content
