@@ -11,6 +11,7 @@ import json
 
 
 class InOut:
+    "Shared Class for managing reading and writing tRIBS files"
     def read_point_files(self):
         """
         Returns Pandas dataframe of nodes or point used in tRIBS mesh.
@@ -292,6 +293,27 @@ class InOut:
 
     @staticmethod
     def read_met_station(file_path):
+        """
+        Reads a meteorological station data file and processes it into a pandas DataFrame with a datetime index.
+
+        Parameters
+        ----------
+        file_path : str
+            Path to the meteorological station data file. The file should be in a space-separated format with columns for
+            year, month, day, and hour.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame containing the meteorological data with a single 'date' column as a datetime index, and the remaining
+            columns from the input file.
+
+        Notes
+        -----
+        - The function expects the input file to have columns 'Y', 'M', 'D', and 'H' for year, month, day, and hour, respectively.
+        - The columns for year, month, day, and hour are converted into a single 'date' column of datetime type.
+        - The original columns 'Y', 'M', 'D', and 'H' are dropped from the DataFrame after the datetime conversion.
+        """
         # TODO add var for specifying Station ID and doc
         df = pd.read_csv(file_path, header=0, sep=r'\s+')
         # convert year, month, day to datetime and drop columns
@@ -402,7 +424,7 @@ class InOut:
                 landuse_list.append(station)
 
         if len(landuse_list) != num_types:
-            print("Error: Number of soil types does not match the specified count.")
+            print("Error: Number of land types does not match the specified count.")
 
         return landuse_list
     @staticmethod
@@ -412,7 +434,7 @@ class InOut:
         #Types	#Params
         ID	a	b1	 P	S	K	b2	Al	 h	Kt	Rs	V LAI theta*_s theta*_t
 
-        :param landuse_list: List of dictionaries containing soil information specified by .ldt structure above.
+        :param landuse_list: List of dictionaries containing land information specified by .ldt structure above.
         :param file_path: Path to save *.sdt file.
         """
         param_standard = 15
@@ -498,75 +520,33 @@ class InOut:
             'Parameters': parameters
         }
 
-    # def write_grid_data_file(self, grid_type):
-    #     """
-    #     Write out the content of a specified Grid Data File (.gdf)
-    #     :param grid_type: string set to "weather", "soil", of "land", with each corresponding to HYDROMETGRID, SCGRID, LUGRID
-    #     :return: dictionary containg keys and content: "Number of Parameters","Latitude", "Longitude","GMT Time Zone", "Parameters" (a  list of dicts)
-    #     """
-    #
-    #     if grid_type == "weather":
-    #         option = self.options["hydrometgrid"]["value"]
-    #     elif grid_type == "soil":
-    #         option = self.options["scgrid"]["value"]
-    #     elif grid_type == "land":
-    #         option = self.options["lugrid"]["value"]
-    #
-    #     parameters = []
-    #
-    #     with open(option, 'r') as file:
-    #         num_parameters = int(file.readline().strip())
-    #         location_info = file.readline().strip().split()
-    #         latitude, longitude, gmt_timezone = location_info
-    #
-    #         variable_count = 0
-    #
-    #         for line in file:
-    #             parts = line.strip().split()
-    #             if len(parts) == 3:
-    #                 variable_name, raster_path, raster_extension = parts
-    #                 variable_count += 1
-    #
-    #                 path_components = raster_path.split(os.path.sep)
-    #
-    #                 # Exclude the last directory as its actually base name
-    #                 raster_path = os.path.sep.join(path_components[:-1])
-    #
-    #                 if raster_path != "NO_DATA":
-    #                     if not os.path.exists(raster_path):
-    #                         print(
-    #                             f"Warning: Raster file not found for Variable '{variable_name}': {raster_path}")
-    #                         raster_path = None
-    #                     elif os.path.getsize(raster_path) == 0:
-    #                         print(
-    #                             f"Warning: Raster file is empty for Variable '{variable_name}': {raster_path}")
-    #                         raster_path = None
-    #                 elif raster_path == "NO_DATA":
-    #                     print(
-    #                         f"Warning: No rasters set for variable '{variable_name}'")
-    #                     raster_path = None
-    #
-    #                 parameters.append({
-    #                     'Variable Name': variable_name,
-    #                     'Raster Path': raster_path,
-    #                     'Raster Extension': raster_extension
-    #                 })
-    #             else:
-    #                 print(f"Skipping invalid line: {line}")
-    #
-    #         if variable_count > num_parameters:
-    #             print(
-    #                 "Warning: The number of variables exceeds the number of parameters. This variable has been reset "
-    #                 "in dictionary.")
-    #
-    #     return {
-    #         'Number of Parameters': variable_count,
-    #         'Latitude': latitude,
-    #         'Longitude': longitude,
-    #         'GMT Time Zone': gmt_timezone,
-    #         'Parameters': parameters
-    #     }
-    #
+    @staticmethod
+    def write_grid_data_file(grid_file, data):
+        """
+        Writes the content of a dictionary to a specified Grid Data File (.gdf)
+        :param grid_file: path to write out grid file to.
+        :param data: dictionary containing keys and content: "Number of Parameters", "Latitude", "Longitude", "GMT Time Zone", "Parameters" (a list of dicts)
+        :return: None
+        """
+
+        with open(grid_file, 'w') as file:
+            # Write number of parameters
+            file.write(f"{data['Number of Parameters']}\n")
+
+            # Write location info (Latitude, Longitude, GMT Time Zone)
+            file.write(f"{data['Latitude']} {data['Longitude']} {data['GMT Time Zone']}\n")
+
+            # Write parameters
+            for param in data['Parameters']:
+                variable_name = param['Variable Name']
+                raster_path = param['Raster Path']
+                raster_extension = param['Raster Extension']
+
+                # # Check if the raster path exists, and if it doesn't, set it to "NO_DATA"
+                # if not os.path.exists(os.path.join(raster_path, raster_extension)):
+                #     raster_path = "NO_DATA"
+
+                file.write(f"{variable_name} {raster_path} {raster_extension}\n")
 
     @staticmethod
     def read_ascii(file_path):
@@ -611,14 +591,11 @@ class InOut:
 
         profile.update(dtype=dtype)
 
-
-
-        # Check if the driver is set to 'AAIGrid' (ASCII format)
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
             # Update the profile for ASCII raster format
             profile.update(
                 count=1,
-                compress=None,
+                #compress=None,
                 driver='AAIGrid',  # ASCII Grid format
                 nodata=-9999.0,
             )

@@ -3,9 +3,22 @@ import datetime
 import sys
 
 class Diagnostics:
+    "Framework/inherited class for class Model"
     def check_paths(instance):
         """
-        Print input/output options where path does not exist and checks stations descriptor and grid data files.
+        Check the existence of specified input/output paths and verify the presence of required files for the tRIBS model.
+
+        This method performs the following tasks:
+        - Checks if the paths specified in the `instance.options` dictionary exist and outputs warnings for non-existent paths.
+        - Verifies the existence of station descriptor paths for precipitation and meteorological stations.
+        - Checks the existence of grid files for land use, soil types, and hydro-meteorological data if specified in the model options.
+        - Ensures that individual grid files for hydro-meteorological data are continuous across the simulation time period, reporting any missing files.
+
+        :param instance: An instance of the class that contains the options, grid data files, and other required attributes.
+        :type instance: object
+
+        :return: A list of missing files for hydro-meteorological grid data if any files are missing; otherwise, returns None.
+        :rtype: list of str or None
         """
         data = instance.options  # Assuming m.options is a dictionary with sub-dictionaries
         exists = []

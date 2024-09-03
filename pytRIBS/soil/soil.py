@@ -1,23 +1,39 @@
 import re
 import os
+import matplotlib.cm
 
+from pyproj import Transformer
 import numpy as np
+import geopandas as gpd
 from owslib.wcs import WebCoverageService
 from rosetta import rosetta, SoilData
 from scipy.optimize import curve_fit
 from pytRIBS.shared.inout import InOut
 from pytRIBS.shared.aux import Aux
+from timezonefinder import TimezoneFinder
+from datetime import datetime
+import pytz
 
 
 class _Soil:
+    """
+    Framework for Soil Class.
+    """
     # Assigning references to the methods
+    @staticmethod
+    def discrete_colormap(N, base_cmap=None):
+        cmap = Aux.discrete_cmap(N, base_cmap)
+        return cmap
+    @staticmethod
+    def fillnodata(files, overwrite=False, resample_pixel_size=None, resample_method='nearest', **kwargs):
+        Aux.fillnodata(files,
+                       overwrite=overwrite,
+                       resample_pixel_size=resample_pixel_size,
+                       resample_method=resample_method,
+                       **kwargs)
 
     @staticmethod
-    def fillnodata(files, overwrite=False, **kwargs):
-        Aux.fillnodata(files, overwrite=overwrite, **kwargs)
-
-    @staticmethod
-    def write_ascii(raster_dict, output_file_path,dtype='float32'):
+    def write_ascii(raster_dict, output_file_path, dtype='float32'):
         InOut.write_ascii(raster_dict, output_file_path, dtype)
 
     @staticmethod
@@ -30,6 +46,68 @@ class _Soil:
         input = InOut.read_json(raster_dict, output_file_path, dtype)
         return input
 
+    def generate_uniform_groundwater(self, watershed_boundary, value, filename=None):
+        """
+        Generates a uniform groundwater raster file within the specified watershed boundary.
+
+        This method creates a raster file with uniform groundwater values over the extent of the given
+        watershed boundary. The raster file can be written to a specified filename or to a default filename
+        from an attribute if no filename is provided.
+
+        Parameters
+        ----------
+        watershed_boundary : GeoDataFrame
+            A GeoDataFrame representing the watershed boundary. It should include a 'bounds' property to
+            determine the raster extent.
+        value : float
+            The uniform groundwater value to be written to the raster file.
+        filename : str, optional
+            The path to the output file. If not provided, the filename will be retrieved from the `gwaterfile`
+            attribute of the object.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - If `filename` is not provided, the method attempts to use the `gwaterfile` attribute from the object.
+        - The raster file is written with a single cell covering the entire extent of the watershed boundary.
+        - The raster format includes the number of columns, rows, and cell size, as well as the specified groundwater value.
+
+        Example
+        -------
+        >>> obj.generate_uniform_groundwater(watershed_gdf, 10.0, 'output_file.txt')
+
+        Raises
+        ------
+        ValueError
+            If the `filename` cannot be determined and `gwaterfile` is not set in the object.
+        """
+
+        if filename is None:
+            gwfile = self.gwaterfile['value']
+            if gwfile is None:
+                print("A filename must be provided if a value has not been supplied to the attribute gwaterfile.")
+                return
+            filename = gwfile
+
+        gdf = watershed_boundary
+
+        bounds = gdf.bounds
+        xllcorner, yllcorner, xmax, ymax = bounds
+
+        cellsize = max(xmax - xllcorner, ymax - yllcorner)
+
+        with open(filename, 'w') as f:
+            f.write("ncols\t1\n")
+            f.write("nrows\t1\n")
+            f.write(f"xllcorner\t{xllcorner:.8f}\n")
+            f.write(f"yllcorner\t{yllcorner:.7f}\n")
+            f.write(f"cellsize\t{cellsize}\n")
+            f.write("NODATA_value\t-9999\n")
+            f.write(f"{value}\n")
+
     def read_soil_table(self, textures=False, file_path=None):
         """
         Soil Reclassification Table Structure (*.sdt)
@@ -40,10 +118,10 @@ class _Soil:
         :param file_path: Specify file_path to soil table not assigned to the .
         """
         if file_path is None:
-            file_path = self.soil_table["value"]
+            file_path = self.soiltablename["value"]
 
             if file_path is None:
-                print(self.soil_table["key_word"] + "is not specified.")
+                print(self.soiltablename["key_word"] + "is not specified.")
                 return None
 
         soil_list = []
@@ -164,9 +242,9 @@ class _Soil:
 
         complete = False
 
-        match = re.search(r'EPSG:(\d+)', epsg)
-        if match:
-            epsg = match.group(1)
+        # match = re.search(r'EPSG:(\d+)', epsg)
+        # if match:
+        #     epsg = match.group(1)
 
         data_dir = 'sg250'
         if not os.path.exists(data_dir):
@@ -333,7 +411,7 @@ class _Soil:
                 elif p == 'Texture':
                     d.update({p: item})
                 # give textural class that need to be updated via user or calibration
-                elif p in (['As', 'Au', 'Cs', 'ks' ]):
+                elif p in (['As', 'Au', 'Cs', 'ks']):
                     d.update({p: ndefined})
 
                 # set grid data to nodata value in table
@@ -580,3 +658,127 @@ class _Soil:
 
         f_raster = {'data': f_grid, 'profile': profile}
         self.write_ascii(f_raster, output_file)
+
+    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+        lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
+        return lat, lon, gmt
+
+    def run_soil_workflow(self, watershed , output_dir):
+        """
+        Executes the soil processing workflow for the given watershed.
+
+        This method performs a series of operations to process soil data, including filling missing values,
+        processing raw soil grids, computing soil parameters, and generating soil maps. It assumes specific
+        file structures and parameters for soil processing and outputs the results to the specified directory.
+
+        Parameters
+        ----------
+        watershed : GeoDataFrame
+            A GeoDataFrame representing the watershed boundary. It should have a 'bounds' property for
+            determining the spatial extent of the data.
+        output_dir : str
+            The directory where output files will be saved.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - The method changes the current working directory to `output_dir` for processing and then restores
+          the original directory.
+        - Soil grids are processed for various depths and soil variables.
+        - The method creates a soil map and writes a soil table file.
+        - It generates a configuration file (`scgrid.gdf`) with paths to the processed soil data.
+
+        Steps
+        -----
+        1. Retrieves soil grid files based on the bounding box and processes them.
+        2. Fills missing data in the soil grids.
+        3. Processes raw soil data for specified depths and variables.
+        4. Computes soil hydraulic conductivity decay parameters.
+        5. Creates a soil classification map.
+        6. Writes a soil table file with texture information.
+        7. Generates a configuration file for soil grid data.
+
+        Example
+        -------
+        >>> obj.run_soil_workflow(watershed_gdf, '/path/to/output_dir')
+
+        Raises
+        ------
+        FileNotFoundError
+            If any of the required input files cannot be found.
+        """
+
+        bounds = watershed.bounds
+
+        bbox = [bounds[0], bounds[1], bounds[2], bounds[3]]
+        depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
+        soil_vars = ['sand', 'silt', 'clay', 'bdod', 'wv0033', 'wv1500']  # note order is important for processing data
+        tribsvars = ['Ks', 'theta_r', 'theta_s', 'psib', 'm']
+        stat = ['mean']
+
+        init_dir = os.getcwd()
+        os.chdir(output_dir)
+
+        files = self.get_soil_grids(bbox, depths, soil_vars, stat)
+        files = [f'sg250/{f}' for f in files]
+
+        self.fillnodata(files,resample_pixel_size=250)
+
+        for depth in depths:
+            grids = []
+            for soi_var in soil_vars:
+                grids.append({'type': soi_var, 'path': f'sg250/{soi_var}_{depth}_mean_filled.tif'})
+                out = [f'sg250/{x}_{depth}.asc' for x in tribsvars]
+
+            if '0-5' in depth:
+                self.process_raw_soil(grids, output=out)
+            else:
+                self.process_raw_soil(grids, output=out, ks_only=True)
+
+        ks_depths = [0.0001, 50, 150, 300]
+        grid_depth = []
+
+        for cnt in range(0, 4):
+            grid_depth.append({'depth': ks_depths[cnt], 'path': f'sg250/Ks_{depths[cnt]}.asc'})
+
+        ks_decay_param = 'f'
+
+        self.compute_ks_decay(grid_depth, output=f'sg250/{ks_decay_param}.asc')
+
+        grids = [{'type': 'sand', 'path': 'sg250/sand_0-5cm_mean_filled.tif'},
+                 {'type': 'clay', 'path': 'sg250/clay_0-5cm_mean_filled.tif'}]
+        classes = self.create_soil_map(grids, output='sg250/soil_classes.soi')
+        self.write_soil_table(classes, 'soils.sdt', textures=True)
+
+        relative_path = f'{output_dir}/sg250/'
+
+        scgrid_vars = ['KS', 'TR', 'TS', 'PB', 'PI', 'FD',
+                       'PO']  # theta_S (TS) and porosity (PO) are assumed to be the same
+        tribsvars.append(ks_decay_param)
+        tribsvars.append('theta_s')
+        ref_depth = '0-5cm'
+
+        num_param = len(scgrid_vars)
+        lat, lon, gmt = self.polygon_centroid_to_geographic(watershed)
+        ext = 'asc'
+
+        with open('scgrid.gdf', 'w') as file:
+            file.write(str(num_param) + '\n')
+            file.write(f"{str(lat)}    {str(lon)}     {str(gmt)}\n")
+
+            for scgrid, prefix in zip(scgrid_vars, tribsvars):
+                if scgrid == 'FD':
+                    file.write(f"{scgrid}    {relative_path}{prefix}    {ext}\n")
+                else:
+                    file.write(f"{scgrid}    {relative_path}{prefix}_{ref_depth}    {ext}\n")
+
+        os.chdir(init_dir)
+
+        # update Soil Class attributes
+        self.soiltablename['value'] = f'{output_dir}/soils.sdt'
+        self.scgrid['value'] = f'{output_dir}/scgrid.gdf'
+        self.soilmapname['value'] = f'{output_dir}/sg250/soil_classes.soi'
+        self.optsoiltype['value'] = 1

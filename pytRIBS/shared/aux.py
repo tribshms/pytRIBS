@@ -1,39 +1,237 @@
 import subprocess
 import os
 import shutil
+from datetime import datetime
+
 import pandas as pd
+import pytz
 import rasterio
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap
 from rasterio import fill
+import  matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+from pyproj import Transformer
+from rasterio.enums import Resampling
+from timezonefinder import TimezoneFinder
 
 
 class Aux:
 
     @staticmethod
-    def fillnodata(files, overwrite=False, **kwargs):
+    def rename_file_with_date(file_path, date_str):
         """
-        Fills nodata gaps in raster files based on a maximum search distance.
+        Renames a file by appending the provided date and '00' for hours before the file extension.
+
+        Args:
+            file_path (str): The full path of the file to be renamed.
+            date_str (str): The date string in the format 'YYYY-MM-DD'.
+
+        Returns:
+            str: The new file name after renaming.
+        """
+        # Extract directory, file name, and extension
+        directory, file_name = os.path.split(file_path)
+        name, ext = os.path.splitext(file_name)
+
+        # Convert the date string to the required format
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            formatted_date = date_obj.strftime('%m%d%Y') + '00'
+        except ValueError:
+            raise ValueError("Date string must be in 'YYYY-MM-DD' format.")
+
+        # Create the new file name
+        new_file_name = f"{name}{formatted_date}{ext}"
+        new_file_path = os.path.join(directory, new_file_name)
+
+        # Rename the file
+        os.rename(file_path, new_file_path)
+
+        return new_file_name
+
+    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+        """
+        Converts the centroid of a polygon from UTM coordinates to geographic coordinates (latitude and longitude),
+        and calculates the GMT offset of the local time zone at the centroid location.
+
+        Parameters
+        ----------
+        polygon : shapely.geometry.Polygon
+            A Shapely Polygon object for which the centroid's geographic coordinates are to be calculated.
+
+        utm_crs : str, optional
+            The EPSG code or CRS string of the UTM coordinate system. If not provided, it defaults to the CRS
+            specified in the `self.meta['EPSG']` attribute.
+
+        geographic_crs : str, optional
+            The CRS string for the geographic coordinate system. Defaults to `"EPSG:4326"` for WGS84.
+
+        Returns
+        -------
+        tuple
+            A tuple containing:
+            - `lat` : float
+                Latitude of the centroid in decimal degrees.
+            - `lon` : float
+                Longitude of the centroid in decimal degrees.
+            - `gmt_offset` : int
+                GMT offset in hours based on the local time zone at the centroid location.
+
+        Raises
+        ------
+        ValueError
+            If no UTM CRS is found and `self.meta['EPSG']` is `None`, a ValueError is raised.
+
+        Notes
+        -----
+        - The function uses the `Transformer` class from the `pyproj` library to convert UTM coordinates to geographic coordinates.
+        - The `TimezoneFinder` library is used to determine the local time zone based on latitude and longitude.
+        - The GMT offset is calculated using the local time zone's UTC offset.
+
+        Examples
+        --------
+        >>> from shapely.geometry import Polygon
+        >>> polygon = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
+        >>> lat, lon, gmt_offset = self.polygon_centroid_to_geographic(polygon, utm_crs="EPSG:32633")
+        >>> print(lat, lon, gmt_offset)
+        (52.5167, 13.3833, 1)
+        """
+        if utm_crs is None:
+            utm_crs = self.meta['EPSG']
+
+            if utm_crs is None:
+                print(
+                    'Could not find a crs for this watershed.\nUpdate the crs in the associated meta attribute or '
+                    'provide it as an argument.')
+                return
+
+        centroid = polygon.centroid
+
+        transformer = Transformer.from_crs(utm_crs, geographic_crs, always_xy=True)
+
+        lon, lat = transformer.transform(centroid.x, centroid.y)
+
+        tf = TimezoneFinder()
+        timezone_str = tf.timezone_at(lng=lon, lat=lat)
+
+        timezone = pytz.timezone(timezone_str)
+        local_time = datetime.now(timezone)
+
+        gmt_offset = int(local_time.utcoffset().total_seconds() / 3600)
+
+        return lat, lon, gmt_offset
+
+    def utm_to_latlong(self, easting, northing, epsg=None):
+        """
+        Convert UTM coordinates to latitude and longitude using an EPSG code with pyproj.
+
+        Parameters:
+        easting (float): UTM easting coordinate.
+        northing (float): UTM northing coordinate.
+        epsg_code (int): EPSG code representing the UTM projection.
+
+        Returns:
+        tuple: A tuple containing latitude and longitude.
+        """
+        if epsg is None:
+            epsg = self.meta['EPSG']
+
+        transformer = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+        lon, lat = transformer.transform(easting, northing)
+
+        return lat, lon
+
+    @staticmethod
+    def discrete_cmap(N, base_cmap='viridis'):
+        """Create an N-bin discrete colormap from the specified input map."""
+        base = plt.get_cmap(base_cmap)
+        color_list = base(np.linspace(0, 1, N))
+        cmap = ListedColormap(color_list, name=base.name + str(N))
+        return cmap
+
+    @staticmethod
+    def fillnodata(files, overwrite=False, resample_pixel_size=None, resample_method='nearest', **kwargs):
+        """
+        Fills nodata gaps in raster files based on a maximum search distance and optionally resamples the raster.
 
         Parameters:
         files (list): List of paths to raster files.
         overwrite (bool): If True, the original files will be overwritten with filled data. If False, new files with "_filled" suffix will be created.
+        resample_pixel_size (float, optional): Target pixel size for resampling. If None, no resampling is performed.
+        resample_method (str, optional): Method for resampling. Choices are 'nearest', 'bilinear', 'cubic', etc. Defaults to 'nearest'.
         **kwargs: Additional keyword arguments to be passed to rasterio.fill.fillnodata.
 
         Note:
-        This function essentially wraps rasterio.fill.fillnodata.
+        This function essentially wraps rasterio.fill.fillnodata and includes optional resampling.
         """
+        resampling_methods = {
+            'nearest': Resampling.nearest,
+            'bilinear': Resampling.bilinear,
+            'cubic': Resampling.cubic,
+            'cubic_spline': Resampling.cubic_spline,
+            'lanczos': Resampling.lanczos,
+            'average': Resampling.average,
+            'mode': Resampling.mode
+        }
+
+        if resample_method not in resampling_methods:
+            raise ValueError(
+                f"Invalid resample_method: {resample_method}. Choose from {list(resampling_methods.keys())}")
+
         for file_path in files:
             with rasterio.open(file_path) as src:
                 data = src.read(1)
                 msk = src.read_masks(1)
                 filled_data = fill.fillnodata(data, mask=msk, **kwargs)
+
+                if resample_pixel_size:
+                    # Compute new dimensions and transform for resampling
+                    old_pixel_size_x, old_pixel_size_y = abs(src.transform[0]), abs(src.transform[4])
+                    new_width = int(src.width * (old_pixel_size_x / resample_pixel_size))
+                    new_height = int(src.height * (old_pixel_size_y / resample_pixel_size))
+
+                    # Update profile for the new dimensions and pixel size
+                    new_transform = src.transform * src.transform.scale(
+                        (src.width / new_width),
+                        (src.height / new_height)
+                    )
+
+                    resampled_data = np.empty((new_height, new_width), dtype=filled_data.dtype)
+                    resampling = resampling_methods[resample_method]
+                    resampled_data = rasterio.warp.reproject(
+                        source=filled_data,
+                        destination=resampled_data,
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=new_transform,
+                        dst_crs=src.crs,
+                        resampling=resampling
+                    )[0]
+
+                    # Update profile for the new resolution
+                    profile = src.profile.copy()
+                    profile.update(
+                        height=new_height,
+                        width=new_width,
+                        transform=new_transform
+                    )
+
+                    data_to_write = resampled_data
+                else:
+                    profile = src.profile.copy()
+                    data_to_write = filled_data
+
+                # Write the data to the output file
                 if overwrite:
-                    with rasterio.open(file_path, 'w', **src.profile) as dst:
-                        dst.write(filled_data, 1)
+                    with rasterio.open(file_path, 'w', **profile) as dst:
+                        dst.write(data_to_write, 1)
                 else:
                     base_name, ext = os.path.splitext(file_path)
                     filled_file_path = f"{base_name}_filled{ext}"
-                    with rasterio.open(filled_file_path, 'w', **src.profile) as dst:
-                        dst.write(filled_data, 1)
+                    with rasterio.open(filled_file_path, 'w', **profile) as dst:
+                        dst.write(data_to_write, 1)
+
     @staticmethod
     def convert_to_datetime(starting_date):
         """

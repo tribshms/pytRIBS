@@ -26,7 +26,11 @@ dependencies = [
     "pyproj",
     "xarray",
     "requests",
-    "pyvista"
+    "pyvista",
+    "scikit-learn",
+    "PyWavelets",
+    "docker",
+    "timezonefinder"
 ]
 version = "0.4.0"
 
