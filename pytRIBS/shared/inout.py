@@ -591,13 +591,15 @@ class InOut:
 
         profile.update(dtype=dtype)
 
+        if 'nodata' not in profile:
+            profile['nodata'] = -9999.0
+
         if 'driver' not in profile or profile['driver'] != 'AAIGrid':
             # Update the profile for ASCII raster format
             profile.update(
                 count=1,
                 #compress=None,
-                driver='AAIGrid',  # ASCII Grid format
-                nodata=-9999.0,
+                driver='AAIGrid'  # ASCII Grid format
             )
 
 

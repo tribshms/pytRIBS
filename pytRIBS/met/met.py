@@ -326,14 +326,14 @@ class _Met(Aux,InOut):
         else:
             prefix = ''
 
-        if os.path.isfile(met_path):
+        try:
             met_dir = os.path.dirname(met_path)
-        else:
+        except:
             met_dir = ''
 
-        if os.path.isfile(precip_path):
+        try:
             precip_dir = os.path.dirname(precip_path)
-        else:
+        except:
             precip_dir = ''
 
         met_sdf_list = []
@@ -342,7 +342,7 @@ class _Met(Aux,InOut):
         # Hard coded params for writing
         count = 1
         num_params_precip = 5
-        num_params_met = 13
+        num_params_met = 12
 
         # Physical constants
         L = 2.453 * 10 ** 6  # Latent heat of vaporization (J/kg)
