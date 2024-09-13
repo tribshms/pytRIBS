@@ -3,6 +3,8 @@ from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from pytRIBS.shared.aux import Aux
+
 
 class Viz:
     "Framework class for Results Class"
@@ -59,7 +61,7 @@ class Viz:
                 rect.get_x() + rect.get_width() / 2, height + 5, label, ha="center", va="bottom"
             )
 
-        ax.text(len(waterbalance.index), max(waterbalance.nP), "mean difference: " + "%.0f" % np.mean(netdiff))
+        #ax.text(len(waterbalance.index), max(waterbalance.nP), "mean difference: " + "%.0f" % np.mean(netdiff))
 
         waterbalance.plot.bar(ax=ax, y=["nQ", "nET", "dS"], stacked=True, width=barwidth,
                               color=['tab:blue', 'tab:red', 'tab:cyan'])
@@ -157,3 +159,7 @@ class Viz:
         animation.save(outfile, fps=fps)
 
         plt.show()
+    @staticmethod
+    def discrete_colormap(N, base_cmap=None):
+        cmap = Aux.discrete_cmap(N, base_cmap)
+        return cmap

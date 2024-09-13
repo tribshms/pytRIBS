@@ -263,13 +263,14 @@ class Read():
         drainage_area = self.int_spatial_vars['VAr'].sum()  ## in m, TODO investigate why sum 'VAr' != max CAr ?
         weights = self.int_spatial_vars['VAr'].values / drainage_area
         porosity = np.sum(self.int_spatial_vars['ThetaS'].values * weights)
+        bedrock_depth = np.sum(self.int_spatial_vars['Bedrock_Depth_mm'].values * weights)
 
         mrf = self.mrf['mrf']
 
         df = pd.DataFrame({
             'Time': mrf['Time'],
             'Unsat_mm': mrf['MSMU'].values * mrf['MDGW'].values * porosity,
-            'Sat_mm': mrf['MDGW'] * porosity,
+            'Sat_mm': (bedrock_depth-mrf['MDGW'])* porosity,
             'CanopySWE_mm': 10 * mrf['AvInSn'].values,
             'SWE_mm': 10 * mrf['AvSWE'].values,
             'Canop_mm': 0,  # not average canopy  storage

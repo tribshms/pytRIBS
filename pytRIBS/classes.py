@@ -66,8 +66,8 @@ class Project:
         self.meta['Name'] = name
         self.meta['EPSG'] = epsg
         self.directories = {
-            "data_model": os.path.join("data", "model"),
-            "data_preprocessing": os.path.join("data", "preprocessing"),
+            "model": os.path.join("data", "model"),
+            "preprocessing": os.path.join("data", "preprocessing"),
             "results": "results",
             "soil": os.path.join("data", "model", "soil"),
             "land": os.path.join("data", "model", "land"),

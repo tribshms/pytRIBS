@@ -410,6 +410,7 @@ class _Met(Aux,InOut):
 
             met_sdf['GMT'] = gmt
             precip_sdf['elevation'] = station_coords[count - 1][4]
+            met_sdf['other'] = station_coords[count - 1][4]
 
             met_sdf['num_parameters'] = num_params_met
             precip_sdf['num_parameters'] = num_params_precip

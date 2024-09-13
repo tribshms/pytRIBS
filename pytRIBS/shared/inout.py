@@ -634,3 +634,13 @@ class InOut:
 
         with open(output_file_path, 'w') as file:
             file.writelines(updated_lines)
+    @staticmethod
+    def write_node_file(node_ids, file_path):
+        # Open the file for writing
+        with open(file_path, 'w') as file:
+            # Write the total number of items at the top
+            file.write(f"{len(node_ids)}\n")
+
+            # Write each item on a separate line
+            for number in node_ids:
+                file.write(f"{number}\n")

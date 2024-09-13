@@ -111,8 +111,8 @@ class WaterBalance:
         waterbalance['dS'] = waterbalance['dUnsat'].values + waterbalance['dSat'].values + waterbalance['dCanopySWE'].values \
                              + waterbalance['dSWE'].values + waterbalance['dCanopy'].values
     
-        # net fluxes from surface and saturated and unsaturated zone, converted Qsurf to negative
-        waterbalance['nQ'] = -waterbalance['nQsurf'].values + waterbalance['nQunsat'].values + waterbalance['nQsat'].values
+        # net fluxes from surface and saturated and unsaturated zone,
+        waterbalance['nQ'] = waterbalance['nQsurf'].values + waterbalance['nQunsat'].values + waterbalance['nQsat'].values
     
         return waterbalance
     
@@ -253,9 +253,8 @@ class WaterBalance:
         waterbalance.update({"dS": waterbalance['dUnsat'] + waterbalance['dSat'] + waterbalance['dCanopySWE'] +
                                    waterbalance['dSWE'] + waterbalance['dCanopy']})
         # net fluxes from surface and saturated and unsaturated zone
-        # changed signs on nQsurf since it's leaving the watershed
-        waterbalance.update({'nQ': -waterbalance['nQsurf'] + waterbalance['nQunsat'] + waterbalance['nQsat']})
-    
+        waterbalance.update({'nQ': waterbalance['nQsurf'] + waterbalance['nQunsat'] + waterbalance['nQsat']})
+
         if method == 'full' or isinstance(method, list):
             waterbalance = pd.DataFrame(waterbalance, index=[0])
         else:
@@ -314,11 +313,11 @@ class WaterBalance:
         # return dictionary with values
         waterbalance = {}
     
-        waterbalance.update({'dSat': df['Sat_mm'].iloc[0]-df['Sat_mm'].iloc[-1]})
+        waterbalance.update({'dSat': df['Sat_mm'].iloc[-1]-df['Sat_mm'].iloc[0]})
         waterbalance.update({'dUnsat': df['Unsat_mm'].iloc[-1] - df['Unsat_mm'].iloc[0]})
         waterbalance.update({'dCanopySWE': df['CanopySWE_mm'].iloc[-1] - df['CanopySWE_mm'].iloc[0]})  # convert from cm to mm
         waterbalance.update({'dSWE': df['SWE_mm'].iloc[-1] - df['SWE_mm'].iloc[0]})
-        waterbalance.update({'dCanopy': 0})  # TODO update mrf w/ mean intercepted canpoy storaage
+        waterbalance.update({'dCanopy': 0})  # TODO update mrf w/ mean intercepted canopy storage
         waterbalance.update({'nP': df['P_mm_h'].sum()})
         waterbalance.update({'nET': df['ET_mm_h'].sum()})
         waterbalance.update({'nQsurf': df['Qsurf_mm_h'].sum()})
