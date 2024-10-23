@@ -12,11 +12,10 @@ build:
     python: "3.12"
 
 python:
-  install:
-    - method: pip
-      path: .
-    - pip:
-        - sphinx_rtd_theme  # Add sphinx_rtd_theme as a dependency
+  pip_install: true
+  pip:
+    - sphinx_rtd_theme  # Add sphinx_rtd_theme as a direct dependency
+
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
