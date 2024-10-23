@@ -1,0 +1,168 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>pytRIBS &mdash; pytRIBS 0.5.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=1dd76d02"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="pytRIBS Main Classes" href="classes.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="#" class="icon icon-home">
+            pytRIBS
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="classes.html">pytRIBS Main Classes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="classes.html#pytribs-base-classes">pytRIBS Base Classes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="classes.html#pytribs-shared-and-helper-classes">pytRIBS Shared and Helper Classes</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">pytRIBS</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="#" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">pytRIBS</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pytribs">
+<h1>pytRIBS<a class="headerlink" href="#pytribs" title="Link to this heading"></a></h1>
+<p><strong>pytRIBS</strong> is a pre-to-post processing python package designed to allow users to setup, simulate, and analyze TIN-based
+Real-time Integrated Basin Simulator (tRIBS) model runs through a python interface. For new tRIBS users see the tRIBS
+<a class="reference external" href="https://tribshms.readthedocs.io/en/latest/">documentation</a> for more information.</p>
+<p><strong>pytRIBS</strong> has a modular design mirroring the structure of a tRIBS model simulation as demonstrated by the Figure 1.</p>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="_images/pytRIBS_design.png"><img alt="pytRIBS Design Diagram" src="_images/pytRIBS_design.png" style="width: 80%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Figure 1: High-level design of the pytRIBS package, showing the key components and their interactions.</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+<p>The core of <strong>pytRIBS</strong> involves five preprocessing classes (Project, Soil, Land, Mesh, and Met) and two Simulation
+classes (Model and Results) that manage setup, execution, and post-processing of a tRIBS model simulation. Each of these
+major classes draw from a set of base classes. You can read about the underlying functionality of each class in the <span class="xref std std-ref">API Documentation</span> section.</p>
+<p>Note: this packages is currently under development and is subject to further changes.</p>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">API Documentation:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="classes.html">pytRIBS Main Classes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Land"><code class="docutils literal notranslate"><span class="pre">Land</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Mesh"><code class="docutils literal notranslate"><span class="pre">Mesh</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Met"><code class="docutils literal notranslate"><span class="pre">Met</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Model"><code class="docutils literal notranslate"><span class="pre">Model</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Project"><code class="docutils literal notranslate"><span class="pre">Project</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Results"><code class="docutils literal notranslate"><span class="pre">Results</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.classes.Soil"><code class="docutils literal notranslate"><span class="pre">Soil</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="classes.html#pytribs-base-classes">pytRIBS Base Classes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.soil.soil.SoilProcessor"><code class="docutils literal notranslate"><span class="pre">SoilProcessor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.met.met.MetProcessor"><code class="docutils literal notranslate"><span class="pre">MetProcessor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.land.land.LandProcessor"><code class="docutils literal notranslate"><span class="pre">LandProcessor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.mesh.mesh.Preprocess"><code class="docutils literal notranslate"><span class="pre">Preprocess</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.mesh.mesh.GenerateMesh"><code class="docutils literal notranslate"><span class="pre">GenerateMesh</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.mesh.run_docker.MeshBuilderDocker"><code class="docutils literal notranslate"><span class="pre">MeshBuilderDocker</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.results.evaluate.Evaluate"><code class="docutils literal notranslate"><span class="pre">Evaluate</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.results.read.Read"><code class="docutils literal notranslate"><span class="pre">Read</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.results.visualize.Viz"><code class="docutils literal notranslate"><span class="pre">Viz</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.results.waterbalance.WaterBalance"><code class="docutils literal notranslate"><span class="pre">WaterBalance</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="classes.html#pytribs-shared-and-helper-classes">pytRIBS Shared and Helper Classes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.shared.aux.Aux"><code class="docutils literal notranslate"><span class="pre">Aux</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.shared.infile_mixin.Infile"><code class="docutils literal notranslate"><span class="pre">Infile</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.shared.inout.InOut"><code class="docutils literal notranslate"><span class="pre">InOut</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.shared.shared_mixin.Shared"><code class="docutils literal notranslate"><span class="pre">Shared</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="classes.html#pytRIBS.shared.shared_mixin.Meta"><code class="docutils literal notranslate"><span class="pre">Meta</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="classes.html" class="btn btn-neutral float-right" title="pytRIBS Main Classes" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright .</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -11,39 +11,62 @@ import requests
 from io import BytesIO
 from pytRIBS.shared.inout import InOut
 from pytRIBS.shared.aux import Aux
-from pytRIBS.soil.soil import _Soil
+from pytRIBS.soil.soil import SoilProcessor
 
 
-class _Met(Aux,InOut):
+class MetProcessor(Aux, InOut):
     """
     Framework for Met Class. See classes.py
     """
     def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+        "Helper function from `Aux` Class"
         lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
         return lat, lon, gmt
     def get_nldas_point(self, centroids, begin, end, epsg=None, **hyriver_env_vars):
         """
-        Fetches NLDAS data for a given set of coordinates and time period, with optional caching and environment variable configuration.
+        Fetch NLDAS-2-2 data for a given set of coordinates and time period, with optional caching and environment variable configuration.
 
-        This function is a wrapper around the pynldas2 library, which is cited as follows:
-        Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175. DOI: 10.21105/joss.03175
+        This method fetches NLDAS-2-2 data for specified centroids and a time range, utilizing the pynldas2 library. It supports
+        the use of environment variables for caching and verbosity settings and can handle optional CRS transformation.
 
-        :param str geom: The geometry for which the data is being requested.
-        :param str begin: The start date for the data request in 'YYYY-MM-DD' format.
-        :param str end: The end date for the data request in 'YYYY-MM-DD' format.
-        :param int epsg: The EPSG code for the coordinate reference system of the geometry.
-        :param str write_path: The path where the resulting xarray dataset should be saved as a NetCDF file, optional.
-        :param **hyriver_env_vars: Additional keyword arguments representing environment variables to control request/response caching and verbosity.
+        Parameters
+        ----------
+        centroids : list or pandas.DataFrame
+            A list or DataFrame of coordinates (longitude, latitude) for which NLDAS-2-2 data is being requested.
+        begin : str
+            The start date for the data request in 'YYYY-MM-DD' format.
+        end : str
+            The end date for the data request in 'YYYY-MM-DD' format.
+        epsg : int, optional
+            The EPSG code for the coordinate reference system of the geometry. If not provided, defaults to the
+            EPSG code in `self.meta`.
+        **hyriver_env_vars : dict, optional
+            Additional keyword arguments representing environment variables to control request/response caching, verbosity,
+            and SSL settings. Some supported variables include:
+            - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests.
+            - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests.
+            - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds.
+            - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache.
+            - HYRIVER_SSL_CERT: Path to an SSL certificate file.
 
-        The following environment variables can be set via **hyriver_env_vars:
-        - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests. Defaults to ./cache/aiohttp_cache.sqlite.
-        - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests. Defaults to ./cache/http_cache.sqlite.
-        - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds. Defaults to one week.
-        - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache. Defaults to false.
-        - HYRIVER_SSL_CERT: Path to an SSL certificate file.
+        Returns
+        -------
+        pandas.DataFrame
+            The dataset containing the NLDAS-2-2 data for the specified coordinates and time period.
 
-        :returns: The dataset containing the NLDAS data for the specified geometry and time period.
-        :rtype: pandas dataframe
+        Raises
+        ------
+        Exception
+            If an error occurs during the data fetching process.
+
+        Notes
+        -----
+        - The function uses the `NLDAS-2.get_bycoords` method from the pynldas2 library to retrieve data.
+        - If no EPSG code is provided, the default value is taken from `self.meta['EPSG']`.
+        - Caching behavior can be controlled through environment variables, which can be passed using **hyriver_env_vars.
+        - The HyRiver library should be cited as follows:
+          Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175.
+          DOI: 10.21105/joss.03175.
         """
 
         # Set environment variables from hyriver_env_vars
@@ -52,7 +75,7 @@ class _Met(Aux,InOut):
 
         if epsg is None:
             epsg = self.meta['EPSG']
-        # Fetch data using the nldas library
+        # Fetch data using the NLDAS-2 library
         df = nldas.get_bycoords(centroids, begin, end, crs=epsg, source='netcdf')
 
         return df
@@ -60,27 +83,52 @@ class _Met(Aux,InOut):
     @staticmethod
     def get_nldas_geom(geom, begin, end, epsg, write_path=None, **hyriver_env_vars):
         """
-        Fetches NLDAS data for a given geometry and time period, with optional caching and environment variable configuration.
+        Fetch NLDAS-2-2 data for a given geometry and time period, with optional caching and environment variable configuration.
 
-        This function is a wrapper around the pynldas2 library, which is cited as follows:
-        Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175. DOI: 10.21105/joss.03175
+        This method retrieves NLDAS-2-2 data for a specified geometry and time range, using the `pynldas2` library.
+        It supports environment variables for controlling caching and verbosity, and optionally saves the resulting
+        xarray dataset to a NetCDF file.
 
-        :param str geom: The geometry for which the data is being requested.
-        :param str begin: The start date for the data request in 'YYYY-MM-DD' format.
-        :param str end: The end date for the data request in 'YYYY-MM-DD' format.
-        :param int epsg: The EPSG code for the coordinate reference system of the geometry.
-        :param str write_path: The path where the resulting xarray dataset should be saved as a NetCDF file, optional.
-        :param **hyriver_env_vars: Additional keyword arguments representing environment variables to control request/response caching and verbosity.
+        Parameters
+        ----------
+        geom : str
+            The geometry (as a Polygon or MultiPolygon) for which the data is being requested.
+        begin : str
+            The start date for the data request in 'YYYY-MM-DD' format.
+        end : str
+            The end date for the data request in 'YYYY-MM-DD' format.
+        epsg : int
+            The EPSG code for the coordinate reference system of the geometry.
+        write_path : str, optional
+            The file path where the resulting xarray dataset should be saved as a NetCDF file. If not provided, the
+            dataset is not saved to a file.
+        **hyriver_env_vars : dict, optional
+            Additional keyword arguments representing environment variables to control request/response caching and verbosity.
+            Supported variables include:
+            - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests.
+            - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests.
+            - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds.
+            - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache.
+            - HYRIVER_SSL_CERT: Path to an SSL certificate file.
 
-        The following environment variables can be set via **hyriver_env_vars:
-        - HYRIVER_CACHE_NAME: Path to the caching SQLite database for asynchronous HTTP requests. Defaults to ./cache/aiohttp_cache.sqlite.
-        - HYRIVER_CACHE_NAME_HTTP: Path to the caching SQLite database for HTTP requests. Defaults to ./cache/http_cache.sqlite.
-        - HYRIVER_CACHE_EXPIRE: Expiration time for cached requests in seconds. Defaults to one week.
-        - HYRIVER_CACHE_DISABLE: Disable reading/writing from/to the cache. Defaults to false.
-        - HYRIVER_SSL_CERT: Path to an SSL certificate file.
+        Returns
+        -------
+        xarray.Dataset
+            The dataset containing the NLDAS-2-2 data for the specified geometry and time period.
 
-        :returns: The dataset containing the NLDAS data for the specified geometry and time period.
-        :rtype: xarray.Dataset
+        Raises
+        ------
+        Exception
+            If an error occurs during the data retrieval or saving process.
+
+        Notes
+        -----
+        - This method uses the `NLDAS-2.get_bygeom` function from the `pynldas2` library to fetch NLDAS-2 data for the specified geometry.
+        - The geometry is automatically converted to a `MultiPolygon` if it is provided as a `Polygon`.
+        - The HyRiver library should be cited as follows:
+          Chegini T, Li H-Y, Leung LR. 2021. HyRiver: Hydroclimate Data Retriever. Journal of Open Source Software 6: 3175.
+          DOI: 10.21105/joss.03175.
+        - If the `write_path` is specified, the resulting dataset is saved as a NetCDF file at the given location.
         """
 
         # Assuming gdf is your GeoDataFrame with a 'geometry' column
@@ -94,7 +142,7 @@ class _Met(Aux,InOut):
         for key, item in hyriver_env_vars.items():
             os.environ[key] = item
 
-        # Fetch data using the nldas library
+        # Fetch data using the NLDAS-2 library
         ds_xarray = nldas.get_bygeom(geom, begin, end, epsg, source='netcdf')
 
         # Write to NetCDF file if write_path is provided
@@ -103,22 +151,45 @@ class _Met(Aux,InOut):
 
         return ds_xarray
 
-    from pyproj import CRS
     @staticmethod
     def get_nldas_elevation(watershed, epsg):
         """
-        Downloads a NetCDF file of the NLDAS elevation grid and returns it as an xarray DataSet.
+        Download the NLDAS-2-2 elevation grid as a NetCDF file and return it as an xarray Dataset.
 
-        :param geopandas.GeoDataFrame watershed: The watershed to clip the elevation data to.
-        :param int epsg: The EPSG code for the desired projection of the output data.
+        This method downloads the NLDAS-2-2 elevation data from a specified URL, clips it to the extent of the provided
+        watershed, reprojects it to the specified EPSG code, and returns the processed data as an xarray Dataset.
 
-        :returns: The processed elevation data clipped to the watershed extent and reprojected.
-        :rtype: xarray.Dataset
+        Parameters
+        ----------
+        watershed : geopandas.GeoDataFrame
+            The watershed for which the elevation data should be clipped.
+        epsg : int
+            The EPSG code for the desired projection of the output data.
+
+        Returns
+        -------
+        xarray.Dataset or None
+            The processed elevation data clipped to the watershed extent and reprojected.
+            Returns `None` if there is an error during the download or processing.
+
+        Raises
+        ------
+        requests.exceptions.RequestException
+            If there is an error downloading the NLDAS-2-2 elevation file.
+        Exception
+            If there is any other error during the processing of the elevation data.
+
+        Notes
+        -----
+        - The NLDAS-2-2 elevation data is downloaded from NASA's LDAS repository as a NetCDF file.
+        - The downloaded dataset is processed to drop unnecessary variables, and the CRS is assigned using the `epsg` parameter.
+        - The EPSG code 32662 (Equidistant Cylindrical projection) is used by default if no EPSG code is specified.
+        - Caching the dataset or passing it as a variable rather than downloading it every time is a potential improvement.
         """
 
         # TODO: Need to make it so that this can be cached or passed in as a variable rather than downloaded.
 
-        url = "https://ldas.gsfc.nasa.gov/sites/default/files/ldas/nldas/NLDAS_elevation.nc4"
+        url = "https://ldas.gsfc.nasa.gov/sites/default/files/ldas/NLDAS-2/NLDAS_elevation.nc4"
 
         try:
             # Send a GET request to the URL
@@ -139,7 +210,7 @@ class _Met(Aux,InOut):
             return dataset
 
         except requests.exceptions.RequestException as e:
-            print(f"Error downloading NLDAS elevation file: {e}")
+            print(f"Error downloading NLDAS-2 elevation file: {e}")
             return None
         except Exception as e:
             print(f"An error occurred: {e}")
@@ -150,10 +221,29 @@ class _Met(Aux,InOut):
         """
         Create polygons representing each pixel in a grid based on GeoTransform parameters.
 
-        :param xarray.Dataset ds: The input dataset with spatial reference information.
+        This method generates a grid of polygons representing each pixel in the input xarray dataset, using the
+        dataset's spatial reference information. The resulting polygons are returned as a GeoDataFrame.
 
-        :returns: GeoDataFrame containing polygons representing each pixel.
-        :rtype: geopandas.GeoDataFrame
+        Parameters
+        ----------
+        ds : xarray.Dataset
+            The input dataset containing spatial reference information, including the GeoTransform parameters.
+        epsg : int, optional
+            The EPSG code for the coordinate reference system. If provided, the resulting GeoDataFrame is set
+            with this CRS.
+
+        Returns
+        -------
+        geopandas.GeoDataFrame
+            A GeoDataFrame containing polygons representing each pixel in the grid, with an optional CRS set
+            if the `epsg` parameter is provided.
+
+        Notes
+        -----
+        - The method extracts the GeoTransform parameters from the dataset to compute the coordinates of each pixel.
+        - The polygons are created using the `shapely.geometry.box` function to define the bounding box of each pixel.
+        - If the `epsg` parameter is provided, the resulting GeoDataFrame will be reprojected to the specified CRS.
+        - The order of the top and bottom pixel coordinates is corrected if necessary, based on the GeoTransform.
         """
 
         # Extract geotransform from the dataset's spatial reference
@@ -194,13 +284,37 @@ class _Met(Aux,InOut):
     @staticmethod
     def clip_nldas_grid_mask_to_watershed(mask, watershed, epsg):
         """
-        Clip a target GeoDataFrame by each polygon in the pixel GeoDataFrame.
+        Clip a target GeoDataFrame (watershed) by each polygon in the pixel GeoDataFrame (mask), and reproject to the appropriate UTM zone.
 
-        :param geopandas.GeoDataFrame mask: GeoDataFrame containing pixel polygons.
-        :param geopandas.GeoDataFrame watershed: GeoDataFrame to be clipped.
+        This method clips the input `watershed` GeoDataFrame by the pixel polygons in the `mask` GeoDataFrame. It calculates the
+        appropriate UTM zone for the `watershed` and reprojects the clipped geometries to UTM or Web Mercator based on location.
+        The method then calculates the centroids and geographic coordinates (longitude, latitude) of the clipped geometries.
 
-        :returns: List of clipped GeoDataFrames, one for each pixel polygon.
-        :rtype: list
+        Parameters
+        ----------
+        mask : geopandas.GeoDataFrame
+            GeoDataFrame containing the pixel polygons from the NLDAS-2-2 grid.
+        watershed : geopandas.GeoDataFrame
+            GeoDataFrame representing the watershed to be clipped by the pixel polygons.
+        epsg : int
+            The EPSG code for the coordinate reference system used for geographic coordinates (longitude, latitude).
+
+        Returns
+        -------
+        tuple
+            - clipped_watershed : geopandas.GeoDataFrame
+                The watershed GeoDataFrame clipped by the pixel polygons, reprojected to UTM coordinates, and containing
+                additional columns for centroids (x, y), geographic coordinates (longitude, latitude), and area.
+            - utm_crs : str
+                The EPSG code of the UTM zone or Web Mercator projection used for the clipped geometries.
+
+        Notes
+        -----
+        - The method first checks the UTM zone of the watershed and determines if it spans multiple UTM zones or hemispheres.
+        - If the watershed spans multiple UTM zones or hemispheres, the geometries are projected to Web Mercator (EPSG:3857).
+        - The resulting clipped GeoDataFrame includes the centroid coordinates (x, y) in UTM and the geographic coordinates
+          (longitude, latitude) after transforming from UTM to the given EPSG code.
+        - The method also calculates the area of each clipped geometry, which can be used for thresholding in subsequent analysis.
         """
 
         # need to convert to utm
@@ -212,7 +326,7 @@ class _Met(Aux,InOut):
         max_y = watershed.bounds.maxy.max()
 
         # checks if watershed is in one utm zone and assigns EPSG code accordingly. If it spans utm zones or hemispheres
-        # than the web meractor projeciton is used. Note defaults on NAD83 since NLDAS-2 is for north america, similarly the
+        # than the web meractor projeciton is used. Note defaults on NAD83 since NLDAS-2-2 is for north america, similarly the
         # above conditionals are likely not needed, but here for future modificaitons/options.
 
         if np.unique(utm_min) == np.unique(utm_max):
@@ -253,15 +367,38 @@ class _Met(Aux,InOut):
     @staticmethod
     def extract_nldas_timeseries(gridded_watershed, nldas_met_xarray, nldas_elev_xarray, threshold_area=0):
         """
-        Convert an xarray dataset to a pandas dataframe for a given location.
+        Extract NLDAS-2-2 timeseries data and station coordinates from a gridded watershed.
 
-        :param xarray.Dataset ds: xarray dataset.
-        :param tuple location: coordinates (e.g., (lat, lon)).
-        :param list coords: coordinates to include in the dataframe, optional.
-        :param list variables: variables to include in the dataframe, optional.
+        This function converts NLDAS-2-2 xarray datasets (meteorological and elevation) to pandas DataFrames for
+        locations within a gridded watershed. The extracted timeseries data is filtered based on the specified
+        threshold area, and the station coordinates (longitude, latitude, UTM x, UTM y, elevation) are returned
+        along with the timeseries data.
 
-        :returns: pandas dataframe.
-        :rtype: pd.DataFrame
+        Parameters
+        ----------
+        gridded_watershed : geopandas.GeoDataFrame
+            A GeoDataFrame representing the watershed with polygons for each sub-watershed.
+        nldas_met_xarray : xarray.Dataset
+            The xarray dataset containing NLDAS-2 meteorological timeseries data.
+        nldas_elev_xarray : xarray.Dataset
+            The xarray dataset containing NLDAS-2 elevation data.
+        threshold_area : float, optional
+            The minimum area for a sub-watershed to be considered. Default is 0, meaning all sub-watersheds
+            are included.
+
+        Returns
+        -------
+        tuple of (list of pandas.DataFrame, list of list of float)
+            - The first element is a list of pandas DataFrames, each containing NLDAS-2 timeseries data for a sub-watershed.
+            - The second element is a list of station coordinates, where each station is represented as
+              [longitude, UTM x, latitude, UTM y, elevation].
+
+        Notes
+        -----
+        - This function uses the 'nearest' method to select the closest data point in the NLDAS-2 xarray dataset
+          for each sub-watershed.
+        - The elevation data is extracted from `nldas_elev_xarray` and combined with the timeseries data.
+        - The station coordinates include both geographic (longitude, latitude) and UTM coordinates (x, y).
         """
 
         nldas_time_series = []
@@ -295,17 +432,40 @@ class _Met(Aux,InOut):
     def convert_and_write_nldas_timeseries(self, list_dfs, station_coords, gmt,
                                            prefix=None, met_path=None, precip_path=None):
         """
-        Convert NLDAS timeseries data to UTM coordinates and prepare for tRIBS input.
+        Convert NLDAS-2-2 timeseries data to UTM coordinates and prepare for tRIBS input.
 
-        :param list list_dfs: List of DataFrames, each containing NLDAS timeseries data with specific columns such as
-        'date', 'psurf', 'wind_u', 'wind_v', 'temp', 'humidity', 'rsds', and 'prcp'. :param list station_coords: List
-        of tuples, each containing the (longitude, latitude, elevation) for each station. :param str prefix: Prefix
-        for the output filenames. :param str met_path: Directory path where meteorological files will be saved.
-        :param str precip_path: Directory path where precipitation files will be saved. :param int gmt: GMT offset
-        for the data. :param str utm_epsg: EPSG code for the UTM coordinate system.
+        This function processes NLDAS-2-2 timeseries data from multiple stations, converts the coordinates to UTM,
+        and prepares the data for tRIBS model input. The processed data is saved to meteorological and precipitation
+        files in the specified directories.
 
-        :returns: The function writes the transformed timeseries data and station details to specified files.
-        :rtype: None
+        Parameters
+        ----------
+        list_dfs : list of pandas.DataFrame
+            A list of DataFrames, each containing NLDAS-2-2 timeseries data with columns such as 'date', 'psurf',
+            'wind_u', 'wind_v', 'temp', 'humidity', 'rsds', and 'prcp'.
+        station_coords : list of tuples
+            A list of tuples, each containing the (longitude, latitude, elevation) for each station.
+        prefix : str
+            Prefix for the output filenames.
+        met_path : str
+            Directory path where meteorological files will be saved.
+        precip_path : str
+            Directory path where precipitation files will be saved.
+        gmt : int
+            GMT offset for the data.
+        utm_epsg : str
+            EPSG code for the UTM coordinate system.
+
+        Returns
+        -------
+        None
+            This function does not return anything. The transformed timeseries data and station details are written
+            to the specified output files.
+
+        Notes
+        -----
+        The function assumes that the input NLDAS-2 data is structured in a specific way and that the stations'
+        geographic coordinates (longitude, latitude) need to be converted to UTM coordinates using the provided EPSG code.
         """
 
         roughness_length = 0.5  # these should probably be made accessible to user, but for now hidden as met still needs refinemet.
@@ -430,27 +590,37 @@ class _Met(Aux,InOut):
 
     def run_met_workflow(self, watershed, begin, end, elev):
         """
-        Executes the meteorological data workflow for a given watershed, retrieving and processing meteorological data.
+        Execute the meteorological data workflow for a given watershed.
 
         This method performs the following steps:
         - Calculates the geographic centroid of the provided watershed.
-        - Retrieves meteorological data for the centroid from the NLDAS dataset.
-        - Converts and writes the NLDAS time series data to the specified format.
+        - Retrieves meteorological data for the centroid from the NLDAS-2 dataset.
+        - Converts and writes the NLDAS-2 time series data to the specified format.
 
-        :param watershed: A Shapely polygon representing the watershed area. The centroid of this polygon is used for data retrieval.
-        :type watershed: shapely.geometry.Polygon
+        Parameters
+        ----------
+        watershed : shapely.geometry.Polygon
+            A Shapely polygon representing the watershed area. The geographic centroid of this polygon is used for
+            data retrieval.
+        begin : str
+            The start date for the meteorological data retrieval, in 'YYYY-MM-DD' format.
+        end : str
+            The end date for the meteorological data retrieval, in 'YYYY-MM-DD' format.
+        elev : float
+            The elevation of the watershed centroid, used in the data processing.
 
-        :param begin: The start date for the meteorological data retrieval.
-        :type begin: str
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame containing the retrieved and processed NLDAS-2-2 meteorological data for the specified centroid.
 
-        :param end: The end date for the meteorological data retrieval.
-        :type end: str
-
-        :param elev: The elevation of the watershed centroid, used in the data processing.
-        :type elev: float
-
-        :return: A DataFrame containing the retrieved and processed NLDAS meteorological data for the specified centroid.
-        :rtype: pandas.DataFrame
+        Notes
+        -----
+        - The geographic centroid of the watershed is calculated and used to retrieve the meteorological data from the
+          NLDAS-2-2 dataset.
+        - The NLDAS-2-2 time series data is retrieved for the specified time range, processed, and written to the appropriate
+          format using the `convert_and_write_nldas_timeseries` method.
+        - A cache is used for the NLDAS-2 data retrieval to improve efficiency.
         """
 
         met_dir = os.path.dirname(self.hydrometstations['value'])

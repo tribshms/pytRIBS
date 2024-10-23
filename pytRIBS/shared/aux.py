@@ -93,7 +93,7 @@ class Aux:
         --------
         >>> from shapely.geometry import Polygon
         >>> polygon = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
-        >>> lat, lon, gmt_offset = self.polygon_centroid_to_geographic(polygon, utm_crs="EPSG:32633")
+        >>> lat, lon, gmt_offset = self._polygon_centroid_to_geographic(polygon, utm_crs="EPSG:32633")
         >>> print(lat, lon, gmt_offset)
         (52.5167, 13.3833, 1)
         """

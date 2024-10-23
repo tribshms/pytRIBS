@@ -5,7 +5,36 @@ from matplotlib import pyplot as plt
 class WaterBalance:
     def get_mrf_water_balance(self, method):
         """
+        Calculate the water balance from watershed averaged results (*.mrf).
+
+        This method computes the water balance for the *.mrf file based on the specified method and stores the
+        result in the `obj.mrf` dictionary.
+
+        Parameters
+        ----------
+        method : str or list of str
+            A string specifying the calculation method ('full' for the entire time period, 'water_year' for water year calculations),
+            or a list of custom date ranges in 'YYYY-MM-DD' format (e.g., ['2024-01-01', '2024-01-31']).
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - The method uses the `_run_mrf_water_balance` internal function to compute the water balance based on the
+          provided method.
+        - The resulting water balance is stored in the `self.mrf` dictionary with the key `"waterbalance"`.
+
+        Examples
+        --------
+        1. Calculate full MRF water balance:
+           >>> get_mrf_water_balance('full')
+
+        2. Calculate custom MRF water balance for specific dates:
+           >>> get_mrf_water_balance(['2024-01-01', '2024-01-31'])
         """
+
         waterbalance = self._run_mrf_water_balance(method)
         self.mrf['waterbalance'] = waterbalance
     
@@ -13,19 +42,38 @@ class WaterBalance:
     def get_element_water_balance(self, method):
         """
         Calculate water balance for elements in the model.
-    
-        This function iterates through element results and calculates the water balance for a specific node or key.
-        The user can choose the method for calculating the time frames over which the water balance is computed.
-    
-        Parameters:
-        - self: An self of the model containing element results.
-        - method: A string specifying the calculation method ('full' or 'water_year') or a list of custom date ranges (min and max).
-    
-        Example:
-        1. Calculate full water balance: get_element_water_balance(self, 'full')
-        2. Calculate custom water balance for specific dates: get_element_water_balance(self, ['2024-01-01', '2024-01-31'])
+
+        This method iterates through element results and calculates the water balance for a specific node or key.
+        The user can specify the method for calculating the time frames over which the water balance is computed.
+
+        Parameters
+        ----------
+        method : str or list of str
+            A string specifying the calculation method ('full' for the entire time period or 'water_year' for water year calculations),
+            or a list of custom date ranges in 'YYYY-MM-DD' format (e.g., ['2024-01-01', '2024-01-31']).
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - The method reads node results from the node output list and calculates the water balance for each element.
+        - The `method` parameter determines how the time period is defined for water balance calculations:
+          - 'full': The full simulation period.
+          - 'water_year': Calculations based on the water year.
+          - A custom date range can be provided as a list of strings in 'YYYY-MM-DD' format.
+        - The water balance results are stored in the `self.element` dictionary with the key `"waterbalance"` for each node.
+
+        Examples
+        --------
+        1. Calculate full water balance:
+           >>> get_element_water_balance('full')
+
+        2. Calculate custom water balance for specific dates:
+           >>> get_element_water_balance(['2024-01-01', '2024-01-31'])
         """
-    
+
         node_file = self.options["nodeoutputlist"]["value"]
         nodes = self.read_node_list(node_file)
     

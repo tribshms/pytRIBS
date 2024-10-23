@@ -1,35 +1,48 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+import os
+import sys
+sys.path.insert(0, os.path.abspath('../../'))
 
-# -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+autodoc_default_options = {
+    'exclude-members': '_*',
+}
 
+# Project information
 project = 'pytRIBS'
-copyright = '2024, L. Wren Raming, C. Josh Cederstrom, Enrique R. Vivoni, among others'
-author = 'L. Wren Raming, C. Josh Cederstrom, Enrique R. Vivoni, among others'
-release = '2024'
+author = 'Wren Raming'
+release = '0.5.0'  # Change to match your version
 
-# -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+# Add any Sphinx extension module names here
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'sphinx_rtd_theme']
 
-extensions = []
+# HTML output theme
+html_theme = 'sphinx_rtd_theme'
 
-templates_path = ['_templates']
-exclude_patterns = []
+html_sidebars = {
+    '**': ['localtoc.html', 'relations.html', 'searchbox.html', 'sourcelink.html'],
+}
 
-language = 'english'
+# -- Extensions to the  Napoleon GoogleDocstring class ---------------------
 
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+from sphinx.ext.napoleon.docstring import GoogleDocstring
 
-html_theme = 'alabaster'
-html_static_path = ['_static']
+# first, we define new methods for any new sections and add them to the class
+def parse_keys_section(self, section):
+    return self._format_fields('Keys', self._consume_fields())
+GoogleDocstring._parse_keys_section = parse_keys_section
 
-extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',  # Optional: For Google and NumPy style docstrings
-    'sphinx.ext.autosummary',  # Optional: For automatic summary generation
-    'sphinx.ext.viewcode',  # Optional: To include links to source code
-]
+def parse_attributes_section(self, section):
+    return self._format_fields('Attributes', self._consume_fields())
+GoogleDocstring._parse_attributes_section = parse_attributes_section
+
+def parse_class_attributes_section(self, section):
+    return self._format_fields('Class Attributes', self._consume_fields())
+GoogleDocstring._parse_class_attributes_section = parse_class_attributes_section
+
+# we now patch the parse method to guarantee that the the above methods are
+# assigned to the _section dict
+def patched_parse(self):
+    self._sections['keys'] = self._parse_keys_section
+    self._sections['class attributes'] = self._parse_class_attributes_section
+    self._unpatched_parse()
+GoogleDocstring._unpatched_parse = GoogleDocstring._parse
+GoogleDocstring._parse = patched_parse

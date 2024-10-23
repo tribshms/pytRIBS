@@ -1,4 +1,4 @@
-class InfileMixin:
+class Infile:
     """
     Mixin for .in file parameters and definitions shared by both pytRIBS Classes Model & Results.
     """

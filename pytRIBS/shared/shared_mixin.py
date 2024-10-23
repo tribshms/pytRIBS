@@ -15,13 +15,13 @@ from shapely.geometry import Polygon
 
 class Meta:
     """
-    Class for project metadata/
+    Class for project metadata.
     """
     def __init__(self):
         self.meta = {"Name": None, "Scenario": None, "EPSG": None}
 
 
-class SharedMixin:
+class Shared:
     """
     Shared methods betweens the pytRIBS Classes.
     """

@@ -6,16 +6,6 @@ class Evaluate:
     """
     A collection of static methods for evaluating the performance of simulated data against observed data.
 
-    Methods
-    -------
-    nash_sutcliffe(observed, simulated)
-        Calculates the Nash-Sutcliffe efficiency coefficient, a measure of how well the model predictions match the observed data.
-    percent_bias(observed, simulated)
-        Calculates the percent bias between observed and simulated values, indicating the average tendency of the model predictions.
-    root_mean_squared_error(observed, simulated)
-        Calculates the root mean squared error (RMSE), a measure of the average magnitude of the errors between observed and simulated values.
-    kling_gupta_efficiency(observed, simulated)
-        Calculates the Kling-Gupta efficiency (KGE), a multi-dimensional measure of model performance that considers correlation, variability, and bias.
     """
     @staticmethod
     def nash_sutcliffe(observed, simulated):
