@@ -27,6 +27,7 @@ dependencies = [
     "xarray",
     "requests",
     "pyvista",
+    "whitebox",
     "scikit-learn",
     "PyWavelets",
     "docker",

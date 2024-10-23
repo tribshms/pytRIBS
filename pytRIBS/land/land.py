@@ -7,13 +7,13 @@ from pytRIBS.shared.aux import Aux
 from pytRIBS.shared.inout import InOut
 
 
-class _Land(InOut):
+class LandProcessor(InOut):
     @staticmethod
-    def discrete_colormap(N, base_cmap=None):
+    def _discrete_colormap(N, base_cmap=None):
         cmap = Aux.discrete_cmap(N, base_cmap)
         return cmap
     @staticmethod
-    def update_landfiles_with_dates(file_path, date_str):
+    def _update_landfiles_with_dates(file_path, date_str):
         Aux.rename_file_with_date(file_path,date_str)
         return
     @staticmethod
@@ -22,18 +22,35 @@ class _Land(InOut):
         """
         Perform unsupervised classification on a NAIP image using K-means clustering.
 
-        :param image_path: Path to the NAIP image file.
-        :type image_path: str
-        :param output_file_path: Path to save the classified image.
-        :type output_file_path: str
-        :param method: Method to use for classification, 'NDVI' or 'true_color'. Default is 'NDVI'.
-        :type method: str
-        :param n_clusters: Number of clusters for K-means. Default is 5.
-        :type n_clusters: int
-        :param plot_result: Whether to plot the classified image. Default is True.
-        :type plot_result: bool
-        :return: Classified image with the same dimensions as input image.
-        :rtype: np.ndarray
+        Parameters
+        ----------
+        image_path : str
+            Path to the NAIP image file.
+        output_file_path : str
+            Path to save the classified image.
+        method : str, optional
+            Method to use for classification, either 'NDVI' or 'true_color'. Default is 'NDVI'.
+        n_clusters : int, optional
+            Number of clusters for K-means clustering. Default is 5.
+        plot_result : bool, optional
+            If True, the classified image will be plotted. Default is True.
+
+        Returns
+        -------
+        np.ndarray
+            The classified image with the same dimensions as the input image.
+
+        Examples
+        --------
+        To classify an image using NDVI and 5 clusters:
+
+        >>> classified_image = perform_kmeans_classification("path/to/naip_image.tif", "path/to/output.tif")
+        >>> print(classified_image.shape)
+
+        To classify an image using true color with 3 clusters and no plotting:
+
+        >>> classified_image = perform_kmeans_classification("path/to/naip_image.tif", "path/to/output.tif", method='true_color', n_clusters=3, plot_result=False)
+
         """
 
         def classify_ndvi(image):
@@ -127,39 +144,47 @@ class _Land(InOut):
         """
         Classifies vegetation height raster based on user-defined thresholds.
 
-        :param raster_path: str
+        Parameters
+        ----------
+        raster_path : str
             Path to the input tree height raster.
-
-        :param thresholds: list of tuples
+        thresholds : list of tuple
             Each tuple defines a range (min, max, class) and its class value.
-            Example: ``[(0, 5, 1), (5, 10, 2), (10, 15, 3)]`` would classify heights
-            from 0-5 as class 1, 5-10 as class 2, etc.
+            For example: ``[(0, 5, 1), (5, 10, 2), (10, 15, 3)]`` will classify heights
+            from 0-5 as class 1, 5-10 as class 2, and so on.
             - The min and max values must be increasing.
-            - On the first iteration, min is allowed to equal max; otherwise, min must be
-              greater than the previous max.
-
-        :param output_path: str
+            - On the first iteration, min is allowed to equal max; on subsequent iterations,
+              min must be greater than the previous max.
+        output_path : str
             Path to save the classified raster.
+        plot_result : bool, optional
+            If True, the classified image will be plotted. Default is True.
 
-        :param plot_result: bool, optional
-            Whether to plot the classified image. Default is ``True``.
+        Returns
+        -------
+        classified_image : np.ndarray
+            The classified raster array.
+        class_list : list of dict
+            List of class attributes, where each dictionary represents a class range and its value.
 
-        :returns:
-            - **classified_image** (*np.ndarray*): The classified raster array.
-            - **class_list** (*list of dicts*): List of class attributes.
-
-        :raises ValueError:
+        Raises
+        ------
+        ValueError
             If the min value is not greater than the previous max value, or if min equals
             max on any iteration other than the first.
 
-        Example usage::
+        Examples
+        --------
+        To classify vegetation height based on predefined thresholds:
 
-            thresholds = [(0, 5, 1), (5, 10, 2), (10, 15, 3)]
-            classified_data, class_list = classify_vegetation_height(
-                raster_path="path/to/raster.tif",
-                thresholds=thresholds,
-                output_path="path/to/output.tif"
-            )
+        >>> thresholds = [(0, 5, 1), (5, 10, 2), (10, 15, 3)]
+        >>> classified_data, class_list = classify_vegetation_height(
+        ...     raster_path="path/to/raster.tif",
+        ...     thresholds=thresholds,
+        ...     output_path="path/to/output.tif"
+        ... )
+        >>> print(classified_data.shape)
+
         """
 
         with rasterio.open(raster_path) as src:
@@ -219,10 +244,11 @@ class _Land(InOut):
             })
 
         return classified_data, class_list
-    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+    def _polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
         lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
         return lat, lon, gmt
-    def create_gdf_content(self,parameters,watershed):
+
+    def create_gdf_content(self, parameters, watershed):
         """
         Create a dictionary containing geographic and parameter information for a watershed.
 
@@ -231,25 +257,47 @@ class _Land(InOut):
         a dictionary containing the number of parameters, the centroid's geographic location,
         the GMT time zone, and a list of parameters.
 
-        :param parameters: A list where each element is a list containing:
-            - parameter name (str): Name of the parameter (e.g., 'VH').
+        Parameters
+        ----------
+        parameters : list of list
+            A list where each element is a list containing:
+            - parameter name (str): The name of the parameter (e.g., 'VH').
             - raster path (str): The file path to the specified raster.
             - file extension (str): The extension of the raster file (e.g., '.tif').
-        :type parameters: list of lists
+        watershed : GeoDataFrame or shapely.geometry.Polygon
+            The watershed boundary used to compute the centroid and derive geographic coordinates.
 
-        :param watershed: The watershed boundary used to compute the centroid and derive geographic coordinates.
-        :type watershed: GeoDataFrame or shapely.geometry.Polygon
+        Returns
+        -------
+        dict
+            A dictionary containing the following key-value pairs:
+            - 'Number of Parameters' : int
+                The number of parameters provided.
+            - 'Latitude' : float
+                The latitude of the watershed centroid in geographic coordinates.
+            - 'Longitude' : float
+                The longitude of the watershed centroid in geographic coordinates.
+            - 'GMT Time Zone' : int
+                The GMT time zone derived from the geographic coordinates.
+            - 'Parameters' : list
+                The original list of parameters provided.
 
-        :returns: A dictionary containing the following key-value pairs:
-            - 'Number of Parameters': int, the number of parameters provided.
-            - 'Latitude': float, the latitude of the watershed centroid in geographic coordinates.
-            - 'Longitude': float, the longitude of the watershed centroid in geographic coordinates.
-            - 'GMT Time Zone': int, the GMT time zone derived from the geographic coordinates.
-            - 'Parameters': list, the original list of parameters provided.
-        :rtype: dict
+        Examples
+        --------
+        To create a dictionary of geographic and parameter information for a watershed:
+
+        >>> parameters = [
+        ...     ['VH', 'path/to/raster1.tif', '.tif'],
+        ...     ['NDVI', 'path/to/raster2.tif', '.tif']
+        ... ]
+        >>> watershed = geopandas.read_file('path/to/watershed.shp')
+        >>> gdf_content = create_gdf_content(parameters, watershed)
+        >>> print(gdf_content['Latitude'], gdf_content['Longitude'])
+
         """
+
         num_params = len(parameters)
-        lat, lon, gmt = self.polygon_centroid_to_geographic(watershed)
+        lat, lon, gmt = self._polygon_centroid_to_geographic(watershed)
 
         land_gdf_content = {'Number of Parameters': num_params,
                             'Latitude': lat,  # update

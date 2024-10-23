@@ -1,9 +1,20 @@
 import os
 import datetime
 import sys
+from pytRIBS.model.run_docker import tRIBSDocker
 
-class Diagnostics:
-    "Framework/inherited class for class Model"
+class ModelProcessor:
+    "Base class for Model Class"
+    @staticmethod
+    def run_tribs_docker(volume_path, input_file, execution_mode='serial', num_processes=None):
+        """Main function to run the TRIBSDocker class."""
+        docker_instance = tRIBSDocker(volume_path, input_file, execution_mode, num_processes)
+        docker_instance.start_docker_desktop()
+        docker_instance.initialize_docker_client()
+        docker_instance.pull_image()
+        docker_instance.run_container()
+        docker_instance.execute()
+        docker_instance.cleanup_container()
     def check_paths(instance):
         """
         Check the existence of specified input/output paths and verify the presence of required files for the tRIBS model.
@@ -16,6 +27,7 @@ class Diagnostics:
 
         :param instance: An instance of the class that contains the options, grid data files, and other required attributes.
         :type instance: object
+
 
         :return: A list of missing files for hydro-meteorological grid data if any files are missing; otherwise, returns None.
         :rtype: list of str or None

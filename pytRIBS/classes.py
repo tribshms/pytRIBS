@@ -4,21 +4,21 @@
 
 # pytRIBS
 from pytRIBS.shared.aux import Aux
-from pytRIBS.model.diagnose import Diagnostics
-from pytRIBS.shared.infile_mixin import InfileMixin
+from pytRIBS.model.model import ModelProcessor
+from pytRIBS.shared.infile_mixin import Infile
 from pytRIBS.shared.inout import InOut
-from pytRIBS.shared.shared_mixin import SharedMixin, Meta
+from pytRIBS.shared.shared_mixin import Shared, Meta
 from pytRIBS.results.waterbalance import WaterBalance
 from pytRIBS.results.read import Read
 from pytRIBS.results.visualize import Viz
 from pytRIBS.results.evaluate import Evaluate
-from pytRIBS.model.run_docker import tRIBSDocker
+
 
 # preprocessing componets
-from pytRIBS.soil.soil import _Soil
-from pytRIBS.met.met import _Met
+from pytRIBS.soil.soil import SoilProcessor
+from pytRIBS.met.met import MetProcessor
 from pytRIBS.mesh.mesh import Preprocess, GenerateMesh
-from pytRIBS.land.land import _Land
+from pytRIBS.land.land import LandProcessor
 
 import os
 
@@ -26,20 +26,11 @@ import os
 
 class Project:
     """
-    Represents a tRIBS project for managing directories and metadata in a specified base directory.
+    pytRIBS Project Class for managing directories and metadata in a specified root directory.
 
     This class initializes with a base directory, a project name, and an EPSG code. It sets up a
     predefined set of directories for data, results, and various sub-categories. It also provides
     functionality to create these directories if they do not already exist.
-
-    Attributes
-    ----------
-    base_dir : str
-        The base directory where all project-related directories will be created.
-    meta : dict
-        A dictionary to store metadata about the project, including 'Name' and 'EPSG'.
-    directories : dict
-        A dictionary defining the structure of directories to be created within the base directory.
 
     Parameters
     ----------
@@ -50,15 +41,14 @@ class Project:
     epsg : int
         The EPSG code representing the coordinate system.
 
-    Methods
-    -------
-    create_directories()
-        Creates the directories defined in the `directories` attribute within the base directory.
-
-    Example
-    -------
-    >>> project = Project("/path/to/base", "MyProject", 4326)
-    >>> # This initializes the project, creates necessary directories, and sets metadata.
+    Attributes
+    ----------
+    base_dir : str
+        The base directory where all project-related directories will be created.
+    meta : dict
+        A dictionary to store metadata about the project, including 'Name' and 'EPSG'.
+    directories : dict
+        A dictionary defining the structure of directories to be created within the base directory.
     """
     def __init__(self, base_dir, name, epsg):
         self.base_dir = base_dir
@@ -66,8 +56,8 @@ class Project:
         self.meta['Name'] = name
         self.meta['EPSG'] = epsg
         self.directories = {
-            "data_model": os.path.join("data", "model"),
-            "data_preprocessing": os.path.join("data", "preprocessing"),
+            "model": os.path.join("data", "model"),
+            "preprocessing": os.path.join("data", "preprocessing"),
             "results": "results",
             "soil": os.path.join("data", "model", "soil"),
             "land": os.path.join("data", "model", "land"),
@@ -75,9 +65,9 @@ class Project:
             "met_meteor": os.path.join("data", "model", "met", "meteor"),
             "mesh": os.path.join("data", "model", "mesh")
         }
-        self.create_directories()
+        self._create_directories()
 
-    def create_directories(self):
+    def _create_directories(self):
         """
         Creates directories defined in the `directories` attribute within the base directory.
 
@@ -89,21 +79,14 @@ class Project:
             full_path = os.path.join(self.base_dir, rel_path)
             os.makedirs(full_path, exist_ok=True)
 
-class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
+class Model(Infile, Shared, Aux, ModelProcessor, Preprocess, InOut):
     """
-    A tRIBS Model class.
+    pytRIBS Model class.
 
     This class provides access to the underlying framework of a tRIBS (TIN-based Real-time Integrated Basin
-    Simulator) simulation. It includes one nested class: Results. The Model class is initialized at the top-level to
+    Simulator) simulation. The Model class can be initialized at the top-level to
     facilitate model setup, simulation, post-processing, and can be used for manipulating and generating multiple
     simulations efficiently.
-
-    Attributes
-    ----------
-    input_options : dict
-        A dictionary of the necessary keywords for a tRIBS `.in` file.
-    model_input_file : str
-        Path to a template `.in` file with the specified paths for model results, inputs, etc.
 
     Parameters
     ----------
@@ -120,6 +103,12 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
     meta : dict, optional
         pytRIBS Meta object Default is `None`.
 
+    Attributes
+    ----------
+    input_options : dict
+        A dictionary of the necessary keywords for a tRIBS `.in` file.
+    model_input_file : str
+        Path to a template `.in` file with the specified paths for model results, inputs, etc.
         """
 
     def __init__(self, input_file=None, met=None, land=None, soil=None, mesh=None, meta=None):
@@ -141,7 +130,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
         self.mesh = mesh
 
         # Merge options from provided instances
-        self.update_shared_options(met=met,land=land,soil=soil,mesh=mesh)
+        self._update_shared_options(met=met, land=land, soil=soil, mesh=mesh)
 
     # SIMULATION METHODS
     def __getattr__(self, name):
@@ -154,7 +143,7 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
         return list(
             set(super().__dir__() + list(self.options.keys()))) if self.options is not None else super().__dir__()
 
-    def update_shared_options(self, met=None, land=None, soil=None, mesh=None):
+    def _update_shared_options(self, met=None, land=None, soil=None, mesh=None):
         # List of provided instances
         instances = [met, land, soil, mesh]
 
@@ -165,24 +154,19 @@ class Model(InfileMixin, SharedMixin, Aux, Diagnostics, Preprocess, InOut):
                     if key in self.options:
                         self.options[key] = instance.__dict__[key]
 
-    @staticmethod
-    def run_tribs_docker(volume_path, input_file, execution_mode='serial', num_processes=None):
-        """Main function to run the TRIBSDocker class."""
-        docker_instance = tRIBSDocker(volume_path, input_file, execution_mode, num_processes)
-        docker_instance.start_docker_desktop()
-        docker_instance.initialize_docker_client()
-        docker_instance.pull_image()
-        docker_instance.run_container()
-        docker_instance.execute()
-        docker_instance.cleanup_container()
-
-
-class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
+class Results(Infile, Shared, WaterBalance, Read, Viz, Evaluate):
     """
-    A tRIBS Results Class.
+    pytRIBS Results Class.
 
     This class provides a framework for analyzing and visualizing individual tRIBS simulations. It takes an instance of
     the `Simulation` class and provides time-series and water balance analysis of the model results.
+
+    Parameters
+    ----------
+    input_file : str, required
+        Path to the input file containing the necessary options for initializing the `Results` class attributes.
+    meta : dict, optional
+        Metadata associated with the `Results` instance.
 
     Attributes
     ----------
@@ -194,15 +178,6 @@ class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
         A dictionary containing `mrf` and `waterbalance`, which are initialized to `None`.
     meta : dict, optional
         Metadata dictionary for additional information. Default is `None`.
-
-    Example
-    -------
-    To create and use an instance of the `Results` class:
-
-    >>> results = Results(input_file="path/to/input_file.in")
-    >>> results.create_input_file()
-    >>> results.read_input_file("path/to/input_file.in")
-    >>> results.get_invariant_properties()
     """
     def __init__(self, input_file, meta=None):
         # setup model paths and options for Result Class
@@ -220,13 +195,19 @@ class Results(InfileMixin, SharedMixin, WaterBalance, Read, Viz, Evaluate):
         self.get_invariant_properties()  # shared
 
 
-class Soil(_Soil):
+class Soil(SoilProcessor):
     """
-    A tRIBS Soil Class.
+    pytRIBS Soil Class.
 
-    This class handles soil-related data and options for the tRIBS model. It manages attributes related to soil mapping,
-    soil tables, and groundwater files. The class inherits from `_Soil` and initializes its attributes based on the provided
-    input file or default options.
+    This class handles soil-related data and options for the tRIBS model. It manages attributes related to soil
+    mapping, soil tables, and groundwater files.
+
+    Parameters
+    ----------
+    input_file : str, optional
+        Path to the input file containing the necessary options for initializing the `Soil` class attributes.
+    meta : dict, optional
+        Metadata associated with the `Soil` instance.
 
     Attributes
     ----------
@@ -248,16 +229,6 @@ class Soil(_Soil):
         The path to the bedrock file.
     gwaterfile : str
         The path to the groundwater file.
-
-    Example
-    -------
-    To create and use an instance of the `Soil` class:
-
-    >>> soil = Soil(input_file="path/to/input_file.in")
-    >>> print(soil.soilmapname)
-    'path/to/soilmap'
-    >>> print(soil.optsoiltype)
-    1
     """
 
     def __init__(self, input_file=None,meta=None):
@@ -268,9 +239,9 @@ class Soil(_Soil):
             self.meta=meta
 
         if input_file is not None:
-            options = SharedMixin.read_input_file(input_file)
+            options = Shared.read_input_file(input_file)
         else:
-            options = InfileMixin.create_input_file()
+            options = Infile.create_input_file()
 
         # Initialize attributes
         self.soilmapname = options['soilmapname']
@@ -284,13 +255,19 @@ class Soil(_Soil):
         self.gwaterfile = options['gwaterfile']
 
 
-class Land(_Land):
+class Land(LandProcessor):
     """
-    A tRIBS Land Class.
+    pytRIBS Land Class.
 
     This class handles land-related data and options for the tRIBS model. It manages attributes related to land mapping,
-    land tables, and land use grids. The class inherits from `_Land` and initializes its attributes based on the provided
-    input file or default options.
+    land tables, and land use grids.
+
+    Parameters
+    ----------
+    input_file : str, optional
+        Path to the input file containing the necessary options for initializing the `Land` class attributes.
+    meta : dict, optional
+        Metadata associated with the `Land` instance.
 
     Attributes
     ----------
@@ -304,16 +281,6 @@ class Land(_Land):
         Option for land use.
     optluintercept : int
         Option for land use interpolation.
-
-    Example
-    -------
-    To create and use an instance of the `Land` class:
-
-    >>> land = Land(input_file="path/to/input_file.in", meta={"some_key": "some_value"})
-    >>> print(land.landmapname)
-    'path/to/landmap'
-    >>> print(land.optlanduse)
-    1
     """
 
     def __init__(self, input_file=None,meta=None):
@@ -324,9 +291,9 @@ class Land(_Land):
             self.meta=meta
 
         if input_file is not None:
-            options = SharedMixin.read_input_file(input_file)
+            options = Shared.read_input_file(input_file)
         else:
-            options = InfileMixin.create_input_file()
+            options = Infile.create_input_file()
 
         # Initialize attributes
         self.landmapname = options['landmapname']
@@ -341,9 +308,19 @@ class Mesh:
     A pytRIBS Mesh Class.
 
     This class manages the creation and processing of mesh data for tRIBS simulations. It handles preprocessing of
-    watershed and stream network data, and integrates with mesh generation routines. The class is initialized with
-    various parameters and options, and it supports setting up mesh-related attributes based on input files or
-    provided arguments.
+    watershed and stream network data, and integrates with mesh generation routines. For more details see base classes
+    and example below.
+
+    Parameters
+    ----------
+    preprocess_args : tuple, optional
+        Arguments for initializing the Preprocess class. Required if `generate_mesh_args` is provided.
+    generate_mesh_args : tuple, optional
+        Arguments for initializing the GenerateMesh class. Must be provided if `preprocess_args` is given.
+    input_file : str, optional
+        Path to the input file for initializing attributes.
+    meta : dict, optional
+        Metadata associated with the mesh.
 
     Attributes
     ----------
@@ -357,26 +334,16 @@ class Mesh:
         Option for graph generation.
     demfile : str
         The name of the file containing the Digital Elevation Model (DEM) data.
-    preprocess : Preprocess, optional
-        An instance of the Preprocess class used for initial data extraction and processing.
-    mesh_generator : GenerateMesh, optional
-        An instance of the GenerateMesh class used for mesh generation.
+    preprocess : :class:`~pytRIBS.preprocess.Preprocess`, optional
+        An instance of the :class:`~pytRIBS.preprocess.Preprocess` class used for initial data extraction and processing.
+    mesh_generator : :class:`~pytRIBS.meshgeneration.GenerateMesh`, optional
+        An instance of the :class:`~pytRIBS.meshgeneration.GenerateMesh` class used for mesh generation.
 
-    Parameters
-    ----------
-    preprocess_args : tuple, optional
-        Arguments for initializing the Preprocess class. Required if `generate_mesh_args` is provided.
-    generate_mesh_args : tuple, optional
-        Arguments for initializing the GenerateMesh class. Must be provided if `preprocess_args` is given.
-    input_file : str, optional
-        Path to the input file for initializing attributes.
-    meta : dict, optional
-        Metadata associated with the mesh.
 
     Example
     -------
     To create and use an instance of the `Mesh` class:
-
+    TODO UPDATE!
     >>> mesh = Mesh(preprocess_args=(arg1, arg2, arg3), generate_mesh_args=(arg4, arg5, arg6, arg7))
     >>> print(mesh.pointfilename)
     'path/to/pointfile'
@@ -402,9 +369,9 @@ class Mesh:
             self.mesh_generator = GenerateMesh(*generate_mesh_args)
 
         if input_file is not None:
-            options = SharedMixin.read_input_file(input_file)
+            options = Shared.read_input_file(input_file)
         else:
-            options = InfileMixin.create_input_file()
+            options = Infile.create_input_file()
 
         # Initialize attributes
         self.pointfilename = options['pointfilename']
@@ -414,13 +381,20 @@ class Mesh:
         self.demfile = options['demfile']
 
 
-class Met(_Met):
+class Met(MetProcessor):
     """
-    A tRIBS Met Class.
+    A pytRIBS Met Class.
 
     This class handles the meteorological data for tRIBS simulations. It initializes various parameters related to
     meteorological stations, rain files, and other related metadata. The class is used to configure and manage the
     meteorological input options required for the simulation.
+
+        Parameters
+    ----------
+    input_file : str, optional
+        Path to the input file containing the necessary options for initializing the `Met` class attributes.
+    meta : dict, optional
+        Metadata associated with the `Met` instance.
 
     Attributes
     ----------
@@ -442,23 +416,6 @@ class Met(_Met):
         The base name for gauge data files.
     rainextension : str
         The file extension for the rainfall data files.
-
-    Parameters
-    ----------
-    input_file : str, optional
-        Path to the input file containing the necessary options for initializing the `Met` class attributes.
-    meta : dict, optional
-        Metadata associated with the `Met` instance.
-
-    Example
-    -------
-    To create and use an instance of the `Met` class:
-
-    >>> met = Met(input_file="path/to/input_file.in")
-    >>> print(met.hydrometstations)
-    'path/to/hydrometstations'
-    >>> print(met.rainfile)
-    'path/to/rainfile'
     """
 
     def __init__(self, input_file=None, meta=None):
@@ -469,9 +426,9 @@ class Met(_Met):
             self.meta = meta
 
         if input_file is not None:
-            options = SharedMixin.read_input_file(input_file)
+            options = Shared.read_input_file(input_file)
         else:
-            options = InfileMixin.create_input_file()
+            options = Infile.create_input_file()
 
         self.hydrometstations = options['hydrometstations']
         self.gaugestations = options['gaugestations']

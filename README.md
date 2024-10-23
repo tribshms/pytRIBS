@@ -3,7 +3,7 @@ A pre-to-post processing python package designed to allow users to setup, simula
 Note this packages is currently under development and is subject to further changes. Additionally, much of the functionality here has had limited testing, consequently responsibility is on the user to verify package functionality. 
 
 ## Known Issues
-* Downloading NLDAS data is limited to a year or two, otherwise NaNs are introduced. This attribute to the pynldas-2 library, but w
+* Downloading NLDAS-2 data is limited to a year or two, otherwise NaNs are introduced. This attribute to the pynldas-2 library, but w
 
 ## Release/Version Notes
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
@@ -15,11 +15,11 @@ this package SHOULD NOT be considered stable.
 * Soil workflow update: input is now shapely polygon, not geopandas geodataframe
 * Added in function to find centroid of watershed
 * Updated docker workflows for both tRIBS and MeshBuilder
-* Added in docs--needs fine tuning
+* Added in build and source code for read the docs--needs fine-tuning
 ### Version 0.4.0 (07/11/2024)
-* added in functionality for met class, can now download and subset NLDAS data with watershed shapefile
+* added in functionality for met class, can now download and subset NLDAS-2 data with watershed shapefile
 * changed key_word in Model.options dictionary to keyword
-* Updated Met Class including methods to download and merge NLDAS data.
+* Updated Met Class including methods to download and merge NLDAS-2 data.
 * Changed waterbalance clacs to use ThetaS instead of porosity following tRIBS
 * Converted geo to meta, and added Meta class.
 * Added new function in read.py to read in *_Outlet.qout files

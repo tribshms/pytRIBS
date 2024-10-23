@@ -15,17 +15,17 @@ from datetime import datetime
 import pytz
 
 
-class _Soil:
+class SoilProcessor:
     """
-    Framework for Soil Class.
+    Methods for pytRIBS Soil Class.
     """
     # Assigning references to the methods
     @staticmethod
-    def discrete_colormap(N, base_cmap=None):
+    def _discrete_colormap(N, base_cmap=None):
         cmap = Aux.discrete_cmap(N, base_cmap)
         return cmap
     @staticmethod
-    def fillnodata(files, overwrite=False, resample_pixel_size=None, resample_method='nearest', **kwargs):
+    def _fillnodata(files, overwrite=False, resample_pixel_size=None, resample_method='nearest', **kwargs):
         Aux.fillnodata(files,
                        overwrite=overwrite,
                        resample_pixel_size=resample_pixel_size,
@@ -33,16 +33,16 @@ class _Soil:
                        **kwargs)
 
     @staticmethod
-    def write_ascii(raster_dict, output_file_path, dtype='float32'):
+    def _write_ascii(raster_dict, output_file_path, dtype='float32'):
         InOut.write_ascii(raster_dict, output_file_path, dtype)
 
     @staticmethod
-    def read_ascii(file_path):
+    def _read_ascii(file_path):
         raster = InOut.read_ascii(file_path)
         return raster
 
     @staticmethod
-    def read_json(raster_dict, output_file_path, dtype='float32'):
+    def _read_json(raster_dict, output_file_path, dtype='float32'):
         input = InOut.read_json(raster_dict, output_file_path, dtype)
         return input
 
@@ -110,12 +110,57 @@ class _Soil:
 
     def read_soil_table(self, textures=False, file_path=None):
         """
-        Soil Reclassification Table Structure (*.sdt)
-        #Types #Params
-        ID Ks thetaS thetaR m PsiB f As Au n ks Cs
-        an o
-        :param textures: Optional True/False for writing texture classes to the .sdt file.
-        :param file_path: Specify file_path to soil table not assigned to the .
+        Reads a Soil Reclassification Table Structure (*.sdt) file.
+
+        The .sdt file contains parameters such as:
+        - ID, Ks, thetaS, thetaR, m, PsiB, f, As, Au, n, ks, Cs, and optionally soil texture.
+
+        The method reads the specified soil table file and returns a list of dictionaries representing
+        the soil types and their associated parameters.
+
+        Parameters
+        ----------
+        textures : bool, optional
+            If True, the method will read and include texture classes in the returned data. Default is False.
+        file_path : str, optional
+            The file path to the soil table (.sdt file). If not provided, it defaults to `self.soiltablename["value"]`.
+            If `self.soiltablename["value"]` is also None, the method will print an error message and return None.
+
+        Returns
+        -------
+        list of dict or None
+            A list of dictionaries, where each dictionary represents a soil type and its associated parameters.
+            Each dictionary contains the following keys:
+            - "ID" : str, soil type ID
+            - "Ks" : float, saturated hydraulic conductivity
+            - "thetaS" : float, saturated water content
+            - "thetaR" : float, residual water content
+            - "m" : float, parameter related to soil pore size distribution
+            - "PsiB" : float, bubbling pressure
+            - "f" : float, hydraulic decay parameter
+            - "As" : float, saturated anisotropy ratio
+            - "Au" : float, unsaturated anisotropy ratio
+            - "n" : float, porosity of the soil
+            - "ks" : float, volumetric heat conductivity
+            - "Cs" : float, soil heat capacity
+            - "Texture" : str, texture class (only if `textures=True` is passed)
+
+            If the file does not conform to the standard .sdt format or the number of soil types doesn't match the specified count,
+            an error message will be printed, and the function returns None.
+
+        Examples
+        --------
+        Reading a soil table without textures:
+
+        >>> soil_list = read_soil_table(textures=False, file_path="path/to/soil_table.sdt")
+        >>> print(soil_list[0]["Ks"])
+        0.0001
+
+        Reading a soil table with textures:
+
+        >>> soil_list = read_soil_table(textures=True, file_path="path/to/soil_table_with_textures.sdt")
+        >>> print(soil_list[0]["Texture"])
+        'Sandy Loam'
         """
         if file_path is None:
             file_path = self.soiltablename["value"]
@@ -219,21 +264,45 @@ class _Soil:
                 file.write(line)
 
     def get_soil_grids(self, bbox, depths, soil_vars, stats, replace=False):
-        """
-        Retrieves soil data from ISRIC WCS service and saves it as GeoTIFFs and returns list of paths to downloaded files.
+        def retrieve_soil_data(self, bbox, depths, soil_vars, stats):
+            """
+            Retrieves soil data from the ISRIC WCS service, saves it as GeoTIFF files, and returns a list of paths to the downloaded files.
 
-        Args:
-            bbox (list): The bounding box coordinates in the format [x1, y1, x2, y2].
-            depths (list): List of soil depths to retrieve data for.
-            soil_vars (list): List of soil variables to retrieve.
-            stats (list): List of statistics to compute for each variable and depth.
+            Parameters
+            ----------
+            bbox : list of float
+                The bounding box coordinates in the format [x1, y1, x2, y2], where:
+                - x1 : float, minimum x-coordinate (longitude or easting)
+                - y1 : float, minimum y-coordinate (latitude or northing)
+                - x2 : float, maximum x-coordinate (longitude or easting)
+                - y2 : float, maximum y-coordinate (latitude or northing)
+            depths : list of str
+                List of soil depths to retrieve data for. Each depth should be specified as a string in the format 'depth_min-depth_max', e.g., '0-5cm', '5-15cm'.
+            soil_vars : list of str
+                List of soil variables to retrieve from the ISRIC service. Examples include 'bdod' (bulk density), 'clay', 'sand', 'silt', 'wv1500' (wilting point), etc.
+                For a full list of variables, see the ISRIC documentation at https://maps.isric.org/.
+            stats : list of str
+                List of statistics to compute for each variable and depth. Typically includes 'mean', but other quantiles or statistics may be available.
+                For more information on prediction quantiles, see the ISRIC SoilGrids FAQ: https://www.isric.org/explore/soilgrids/faq-soilgrids.
 
-        Example:
-            bbox = [387198, 3882394, 412385, 3901885]  # x1,y1,x2,y2
-            depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
-            soil_vars = ['bdod', 'clay', 'sand', 'silt', 'wv1500', 'wv0033', 'wv0010'], see https://maps.isric.org/
-            stats = ['mean'], see prediciton quantiles at https://www.isric.org/explore/soilgrids/faq-soilgrids
-        """
+            Returns
+            -------
+            list of str
+                A list of file paths to the downloaded GeoTIFF files.
+
+            Examples
+            --------
+            To retrieve soil data for specific depths and variables within a bounding box:
+
+            >>> bbox = [387198, 3882394, 412385, 3901885]  # x1, y1, x2, y2 (e.g., UTM coordinates)
+            >>> depths = ['0-5cm', '5-15cm', '15-30cm', '30-60cm', '60-100cm']
+            >>> soil_vars = ['bdod', 'clay', 'sand', 'silt', 'wv1500', 'wv0033', 'wv0010']
+            >>> stats = ['mean']
+            >>> file_paths = retrieve_soil_data(bbox, depths, soil_vars, stats)
+            >>> print(file_paths)
+            ['path/to/downloaded_file_1.tif', 'path/to/downloaded_file_2.tif', ...]
+            """
+
         epsg = self.meta['EPSG']
 
         if epsg is None:
@@ -285,19 +354,46 @@ class _Soil:
 
     def create_soil_map(self, grid_input, output=None):
         """
-        Writes out an ascii file with soil classes assigned by soil texture classification and returns a soil classification table
-        with associated parameters.
+        Writes out an ASCII file with soil classes assigned by soil texture classification.
 
-        Parameters:
-        - grid_input (list of dict or str): If a dictionary list, keys are "grid_type" and "path" for each soil property.
-                                    Format of dictionary list follows:
-                                    [{'type':'sand', 'path':'path/to/grid'},
-                                    {'type':'clay', 'path':'path/to/grid'},
+        Parameters
+        ----------
+        grid_input : list of dict or str
+            If a dictionary list, each dictionary should contain keys "grid_type" and "path" for each soil property.
+            The format of the dictionary list is as follows:
+
+            ::
+
+                [{'type': 'sand', 'path': 'path/to/sand_grid'},
+                 {'type': 'clay', 'path': 'path/to/clay_grid'}]
+
+            If a string is provided, it is treated as the path to a JSON configuration file containing grid types and output file paths.
+
+        output : str, optional
+            The file path where the ASCII soil map will be saved. If not provided, the default output file will be used (`'soil_class.soi'`).
+
+        Returns
+        -------
+        None
+            This function does not return any value. It writes an ASCII file with soil classifications to the specified `output` path.
+
+        Examples
+        --------
+        To create a soil map using a dictionary list:
+
+        >>> grid_input = [{'type': 'sand', 'path': 'path/to/sand_grid'},
+        ...               {'type': 'clay', 'path': 'path/to/clay_grid'}]
+        >>> create_soil_map(grid_input, output="path/to/soil_map.asc")
+
+        To create a soil map using a configuration file:
+
+        >>> grid_input = "path/to/config_file.json"
+        >>> create_soil_map(grid_input)
         """
 
         if isinstance(grid_input, str):
             # Read configuration from the file
-            config = self.read_json(grid_input)
+            config = self._read_json(grid_input)
             grids = config['grid_types']
             output_file = config['output_files']
         elif isinstance(grid_input, list):
@@ -352,7 +448,7 @@ class _Soil:
         for cnt, g in enumerate(grids):
             grid_type, path = g['type'], g['path']
             print(f"Ingesting {grid_type} from: {path}")
-            geo_tiff = self.read_ascii(path)
+            geo_tiff = self._read_ascii(path)
             array = geo_tiff['data']
             size = array.shape
 
@@ -393,7 +489,7 @@ class _Soil:
 
         # Need to re-write soil map so that classes start from 1 and sequentially thereafter
         soi_raster = {'data': soil_class[0], 'profile': geo_tiff['profile']}
-        self.write_ascii(soi_raster, output_file, dtype='int16')
+        self._write_ascii(soi_raster, output_file, dtype='int16')
 
         # create soil table with  nodata for rasyes
         parameters = ['ID', 'Ks', 'thetaS', 'thetaR', 'm', 'PsiB', 'f', 'As', 'Au', 'n', 'ks', 'Cs', 'Texture']
@@ -425,34 +521,61 @@ class _Soil:
 
     def process_raw_soil(self, grid_input, output=None, ks_only=False):
         """
-        Writes ascii grids Ks, theta_s, theta_r, psib, and m from gridded soil data for % sand, silt, clay, bulk density, and volumetric water content at 33 and 1500 kPa.
+        Writes ASCII grids for Ks, theta_s, theta_r, psib, and m from gridded soil data for sand, silt, clay, bulk density, and volumetric water content at 33 and 1500 kPa.
 
-        Parameters:
-        - grid_input (list of dict or str): If a dictionary list, keys are "grid_type" and "path" for each soil property.
-                                    Format of dictionary list follows:
-                                    [{'type':'sand_fraction', 'path':'path/to/grid'},
-                                    {'type':'silt_fraction', 'path':'path/to/grid'},
-                                    {'type':'clay_fraction', 'path':'path/to/grid'},
-                                    {'type':'bulk_density', 'path':'path/to/grid'},
-                                    {'type':'vwc_33', 'path':'path/to/grid'},
-                                    {'type':'vwc_1500', 'path':'path/to/grid'}]
+        Parameters
+        ----------
+        grid_input : list of dict or str
+            If a dictionary list, each dictionary should contain the keys "grid_type" and "path" for each soil property.
+            The format of the dictionary list follows this structure:
 
-                                    If a string is provided, it is treated as the path to a file containing the
-                                    configuration file must be written in json format.
+            ::
 
-        - output (list, optional): List of output file names for different soil properties.
-        - ks_only True will only write rasters for ks, this is useful if using compute_decay_ks
+                [{'type': 'sand_fraction', 'path': 'path/to/grid'},
+                 {'type': 'silt_fraction', 'path': 'path/to/grid'},
+                 {'type': 'clay_fraction', 'path': 'path/to/grid'},
+                 {'type': 'bulk_density', 'path': 'path/to/grid'},
+                 {'type': 'vwc_33', 'path': 'path/to/grid'},
+                 {'type': 'vwc_1500', 'path': 'path/to/grid'}]
 
-        Note:
-        - The 'grid_types' key should contain a list of dictionaries, each specifying a grid type and its corresponding file path.
-        - The 'output_files' key should contain a list of exactly 5 output file names for different soil properties.
-        - The file paths in 'grid_types' should be valid, and the 'output_files' list should have the correct size.
+            If a string is provided, it is treated as the path to a JSON configuration file.
+
+        output : list, optional
+            List of output file names for different soil properties. The list should have exactly 5 file names corresponding to different soil properties.
+
+        ks_only : bool, optional
+            If `True`, only write rasters for Ks. This is useful when using the `compute_decay_ks` function.
+
+        Notes
+        -----
+        - The `grid_input` key should contain a list of dictionaries, each specifying a grid type and its corresponding file path.
+        - The `output` list should contain exactly 5 output file names for different soil properties.
+        - The file paths in the `grid_input` list should be valid, and the `output` list should have the correct number of file names.
+
+        Examples
+        --------
+        To write all soil property grids:
+
+        >>> grid_input = [{'type': 'sand_fraction', 'path': 'path/to/sand_grid'},
+        ...               {'type': 'silt_fraction', 'path': 'path/to/silt_grid'},
+        ...               {'type': 'clay_fraction', 'path': 'path/to/clay_grid'},
+        ...               {'type': 'bulk_density', 'path': 'path/to/bulk_density_grid'},
+        ...               {'type': 'vwc_33', 'path': 'path/to/vwc_33_grid'},
+        ...               {'type': 'vwc_1500', 'path': 'path/to/vwc_1500_grid'}]
+        >>> output = ['ks_output.asc', 'theta_s_output.asc', 'theta_r_output.asc', 'psib_output.asc', 'm_output.asc']
+        >>> your_function_name(grid_input, output)
+
+        To write only Ks raster:
+
+        >>> grid_input = "path/to/config.json"
+        >>> output = ['ks_output.asc']
+        >>> your_function_name(grid_input, output, ks_only=True)
         """
 
         # Check if grid_input is a string (path to a config file)
         if isinstance(grid_input, str):
             # Read configuration from the file
-            config = self.read_json(grid_input)
+            config = self._read_json(grid_input)
             grids = config['grid_types']
             output_files = config['output_files']
         elif isinstance(grid_input, list):
@@ -483,7 +606,7 @@ class _Soil:
         for cnt, g in enumerate(grids):
             grid_type, path = g['type'], g['path']
             print(f"Ingesting {grid_type} from: {path}")
-            geo_tiff = self.read_ascii(path)
+            geo_tiff = self._read_ascii(path)
             array = geo_tiff['data']
             size = array.shape
 
@@ -552,30 +675,59 @@ class _Soil:
 
         if ks_only:
             soi_raster = {'data': soil_prop[0], 'profile': profile}
-            self.write_ascii(soi_raster, output_files[0])
+            self._write_ascii(soi_raster, output_files[0])
         else:
             for soil_property, name in zip(soil_prop, output_files):
                 soi_raster = {'data': soil_property, 'profile': profile}
-                self.write_ascii(soi_raster, name)
+                self._write_ascii(soi_raster, name)
 
     def compute_ks_decay(self, grid_input, output=None):
         """
-        Produces raster for the conductivity decay parameter f, following Ivanov et al., 2004.
-        :param dict grid_input: If a dictionary list, keys are "depth" and "path" for each soil property.
-                                Depth should be provided in units of mm.
-                                    Format of dictionary list follows (from shallowest to deepest):
-                                    [{'depth':25 , 'path':'path/to/25_mm_ks'},
-                                    ...
-                                    {'depth':800 , 'path':'path/to/800_mm_ks'},]
+        Produces a raster for the conductivity decay parameter `f`, following Ivanov et al., 2004.
 
-                                    If a string is provided, it is treated as the path to a configuration file. The
-                                    configuration file must be written in json format.
-        :param str output: Location to save raster with conductivity decay parameter f.
+        Parameters
+        ----------
+        grid_input : dict or str
+            If a dictionary, it should contain keys "depth" and "path" for each soil property.
+            Depth should be provided in units of mm. The format of the dictionary list should follow
+            this structure (from shallowest to deepest):
+
+            ::
+
+                [{'depth': 25, 'path': 'path/to/25_mm_ks'},
+                 {...},
+                 {'depth': 800, 'path': 'path/to/800_mm_ks'}]
+
+            If a string is provided, it is treated as the path to a configuration file. The configuration
+            file must be written in JSON format.
+        output : str
+            Location to save the raster with the conductivity decay parameter `f`.
+
+        Returns
+        -------
+        None
+            This function saves the generated raster to the specified `output` location.
+
+        Examples
+        --------
+        To generate a raster using a dictionary for `grid_input`:
+
+        >>> grid_input = [{'depth': 25, 'path': 'path/to/25_mm_ks'},
+        ...               {'depth': 800, 'path': 'path/to/800_mm_ks'}]
+        >>> output = "path/to/output_raster.tif"
+        >>> compute_ks_decay(grid_input, output)
+
+        To generate a raster using a configuration file:
+
+        >>> grid_input = "path/to/config_file.json"
+        >>> output = "path/to/output_raster.tif"
+        >>> compute_ks_decay(grid_input, output)
         """
+
         # Check if grid_input is a string (path to a config file)
         if isinstance(grid_input, str):
             # Read configuration from the file
-            config = self.read_json(grid_input)
+            config = self._read_json(grid_input)
             grids = config['grid_depth']
             output_file = config['output_file']
         elif isinstance(grid_input, list):
@@ -601,7 +753,7 @@ class _Soil:
         for cnt, g in enumerate(grids):
             depth, path = g['depth'], g['path']
             print(f"Ingesting Ks grid at {depth} from: {path}")
-            raster = self.read_ascii(path)
+            raster = self._read_ascii(path)
             array = raster['data']
             depth_vec[cnt] = depth
 
@@ -657,13 +809,13 @@ class _Soil:
                     fcov[i, j] = param_cov[0, 0]
 
         f_raster = {'data': f_grid, 'profile': profile}
-        self.write_ascii(f_raster, output_file)
+        self._write_ascii(f_raster, output_file)
 
-    def polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
+    def _polygon_centroid_to_geographic(self, polygon, utm_crs=None, geographic_crs="EPSG:4326"):
         lat,lon, gmt = Aux.polygon_centroid_to_geographic(self,polygon,utm_crs=utm_crs,geographic_crs=geographic_crs)
         return lat, lon, gmt
 
-    def run_soil_workflow(self, watershed , output_dir):
+    def run_soil_workflow(self, watershed, output_dir):
         """
         Executes the soil processing workflow for the given watershed.
 
@@ -674,7 +826,7 @@ class _Soil:
         Parameters
         ----------
         watershed : GeoDataFrame
-            A GeoDataFrame representing the watershed boundary. It should have a 'bounds' property for
+            A GeoDataFrame representing the watershed boundary. It must contain a 'bounds' property for
             determining the spatial extent of the data.
         output_dir : str
             The directory where output files will be saved.
@@ -688,27 +840,28 @@ class _Soil:
         - The method changes the current working directory to `output_dir` for processing and then restores
           the original directory.
         - Soil grids are processed for various depths and soil variables.
-        - The method creates a soil map and writes a soil table file.
-        - It generates a configuration file (`scgrid.gdf`) with paths to the processed soil data.
+        - The method creates a soil map, writes a soil table file, and generates a configuration file (`scgrid.gdf`)
+          with paths to the processed soil data.
+        - Workflow steps:
+            1. Retrieves soil grid files based on the bounding box from the `watershed` GeoDataFrame.
+            2. Fills missing data in the soil grids.
+            3. Processes raw soil data for specified depths and variables.
+            4. Computes soil hydraulic conductivity decay parameters.
+            5. Creates a soil classification map.
+            6. Writes a soil table file with texture information.
+            7. Generates a configuration file for soil grid data (`scgrid.gdf`).
 
-        Steps
-        -----
-        1. Retrieves soil grid files based on the bounding box and processes them.
-        2. Fills missing data in the soil grids.
-        3. Processes raw soil data for specified depths and variables.
-        4. Computes soil hydraulic conductivity decay parameters.
-        5. Creates a soil classification map.
-        6. Writes a soil table file with texture information.
-        7. Generates a configuration file for soil grid data.
+        Examples
+        --------
+        To run the soil processing workflow:
 
-        Example
-        -------
         >>> obj.run_soil_workflow(watershed_gdf, '/path/to/output_dir')
 
         Raises
         ------
         FileNotFoundError
             If any of the required input files cannot be found.
+
         """
 
         bounds = watershed.bounds
@@ -725,7 +878,7 @@ class _Soil:
         files = self.get_soil_grids(bbox, depths, soil_vars, stat)
         files = [f'sg250/{f}' for f in files]
 
-        self.fillnodata(files,resample_pixel_size=250)
+        self._fillnodata(files, resample_pixel_size=250)
 
         for depth in depths:
             grids = []
@@ -762,7 +915,7 @@ class _Soil:
         ref_depth = '0-5cm'
 
         num_param = len(scgrid_vars)
-        lat, lon, gmt = self.polygon_centroid_to_geographic(watershed)
+        lat, lon, gmt = self._polygon_centroid_to_geographic(watershed)
         ext = 'asc'
 
         with open('scgrid.gdf', 'w') as file:
