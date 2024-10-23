@@ -10,7 +10,7 @@ PytRIBS uses semantic versioning. Currently, we are in the initial development p
 this package SHOULD NOT be considered stable.
 ### Verison 0.5.0 (in development)
 * Added in unsupervised classification function for NAIP image and Tree hieght rasters in Land Class
-* Finalized Mesh Class, with dependence on a Preprocessing Class (DEM and GIS analysis) and  MeshGeneration Class
+* Finalized Mesh Class, with dependence on a Preprocessing Class (DEM and GIS analysis) and MeshGeneration Class
 * Model class can be initialized with combination of Met, Soil, Land, and Mesh classes as well as an input file
 * Soil workflow update: input is now shapely polygon, not geopandas geodataframe
 * Added in function to find centroid of watershed
