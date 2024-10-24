@@ -2,6 +2,12 @@
 A pre-to-post processing python package designed to allow users to setup, simulate, and analyze TIN-based Real-time Integrated Basin Simulator (tRIBS) model runs through a python interface.
 Note this packages is currently under development and is subject to further changes. Additionally, much of the functionality here has had limited testing, consequently responsibility is on the user to verify package functionality. 
 
+## Documentation
+pytRIBS documentation is available [here.](https://pytribs.readthedocs.io/en/latest/)
+
+## Examples
+A full tRIBS model setup, simulation, and analysis is provided [here.](https://zenodo.org/records/13988020)
+
 ## Known Issues
 * Downloading NLDAS-2 data is limited to a year or two, otherwise NaNs are introduced. This attribute to the pynldas-2 library, but w
 
