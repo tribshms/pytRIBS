@@ -11,7 +11,6 @@ import requests
 from io import BytesIO
 from pytRIBS.shared.inout import InOut
 from pytRIBS.shared.aux import Aux
-from pytRIBS.soil.soil import SoilProcessor
 
 
 class MetProcessor(Aux, InOut):
@@ -24,15 +23,15 @@ class MetProcessor(Aux, InOut):
         return lat, lon, gmt
     def get_nldas_point(self, centroids, begin, end, epsg=None, **hyriver_env_vars):
         """
-        Fetch NLDAS-2-2 data for a given set of coordinates and time period, with optional caching and environment variable configuration.
+        Fetch NLDAS-2 data for a given set of coordinates and time period, with optional caching and environment variable configuration.
 
-        This method fetches NLDAS-2-2 data for specified centroids and a time range, utilizing the pynldas2 library. It supports
+        This method fetches NLDAS-2 data for specified centroids and a time range, utilizing the pynldas2 library. It supports
         the use of environment variables for caching and verbosity settings and can handle optional CRS transformation.
 
         Parameters
         ----------
         centroids : list or pandas.DataFrame
-            A list or DataFrame of coordinates (longitude, latitude) for which NLDAS-2-2 data is being requested.
+            A list or DataFrame of coordinates (longitude, latitude) for which NLDAS-2 data is being requested.
         begin : str
             The start date for the data request in 'YYYY-MM-DD' format.
         end : str
@@ -52,7 +51,7 @@ class MetProcessor(Aux, InOut):
         Returns
         -------
         pandas.DataFrame
-            The dataset containing the NLDAS-2-2 data for the specified coordinates and time period.
+            The dataset containing the NLDAS-2 data for the specified coordinates and time period.
 
         Raises
         ------
@@ -83,9 +82,9 @@ class MetProcessor(Aux, InOut):
     @staticmethod
     def get_nldas_geom(geom, begin, end, epsg, write_path=None, **hyriver_env_vars):
         """
-        Fetch NLDAS-2-2 data for a given geometry and time period, with optional caching and environment variable configuration.
+        Fetch NLDAS-2 data for a given geometry and time period, with optional caching and environment variable configuration.
 
-        This method retrieves NLDAS-2-2 data for a specified geometry and time range, using the `pynldas2` library.
+        This method retrieves NLDAS-2 data for a specified geometry and time range, using the `pynldas2` library.
         It supports environment variables for controlling caching and verbosity, and optionally saves the resulting
         xarray dataset to a NetCDF file.
 
@@ -114,7 +113,7 @@ class MetProcessor(Aux, InOut):
         Returns
         -------
         xarray.Dataset
-            The dataset containing the NLDAS-2-2 data for the specified geometry and time period.
+            The dataset containing the NLDAS-2 data for the specified geometry and time period.
 
         Raises
         ------
@@ -154,9 +153,9 @@ class MetProcessor(Aux, InOut):
     @staticmethod
     def get_nldas_elevation(watershed, epsg):
         """
-        Download the NLDAS-2-2 elevation grid as a NetCDF file and return it as an xarray Dataset.
+        Download the NLDAS-2 elevation grid as a NetCDF file and return it as an xarray Dataset.
 
-        This method downloads the NLDAS-2-2 elevation data from a specified URL, clips it to the extent of the provided
+        This method downloads the NLDAS-2 elevation data from a specified URL, clips it to the extent of the provided
         watershed, reprojects it to the specified EPSG code, and returns the processed data as an xarray Dataset.
 
         Parameters
@@ -175,13 +174,13 @@ class MetProcessor(Aux, InOut):
         Raises
         ------
         requests.exceptions.RequestException
-            If there is an error downloading the NLDAS-2-2 elevation file.
+            If there is an error downloading the NLDAS-2 elevation file.
         Exception
             If there is any other error during the processing of the elevation data.
 
         Notes
         -----
-        - The NLDAS-2-2 elevation data is downloaded from NASA's LDAS repository as a NetCDF file.
+        - The NLDAS-2 elevation data is downloaded from NASA's LDAS repository as a NetCDF file.
         - The downloaded dataset is processed to drop unnecessary variables, and the CRS is assigned using the `epsg` parameter.
         - The EPSG code 32662 (Equidistant Cylindrical projection) is used by default if no EPSG code is specified.
         - Caching the dataset or passing it as a variable rather than downloading it every time is a potential improvement.
@@ -293,7 +292,7 @@ class MetProcessor(Aux, InOut):
         Parameters
         ----------
         mask : geopandas.GeoDataFrame
-            GeoDataFrame containing the pixel polygons from the NLDAS-2-2 grid.
+            GeoDataFrame containing the pixel polygons from the NLDAS-2 grid.
         watershed : geopandas.GeoDataFrame
             GeoDataFrame representing the watershed to be clipped by the pixel polygons.
         epsg : int
@@ -326,7 +325,7 @@ class MetProcessor(Aux, InOut):
         max_y = watershed.bounds.maxy.max()
 
         # checks if watershed is in one utm zone and assigns EPSG code accordingly. If it spans utm zones or hemispheres
-        # than the web meractor projeciton is used. Note defaults on NAD83 since NLDAS-2-2 is for north america, similarly the
+        # than the web meractor projeciton is used. Note defaults on NAD83 since NLDAS-2 is for north america, similarly the
         # above conditionals are likely not needed, but here for future modificaitons/options.
 
         if np.unique(utm_min) == np.unique(utm_max):
@@ -367,9 +366,9 @@ class MetProcessor(Aux, InOut):
     @staticmethod
     def extract_nldas_timeseries(gridded_watershed, nldas_met_xarray, nldas_elev_xarray, threshold_area=0):
         """
-        Extract NLDAS-2-2 timeseries data and station coordinates from a gridded watershed.
+        Extract NLDAS-2 timeseries data and station coordinates from a gridded watershed.
 
-        This function converts NLDAS-2-2 xarray datasets (meteorological and elevation) to pandas DataFrames for
+        This function converts NLDAS-2 xarray datasets (meteorological and elevation) to pandas DataFrames for
         locations within a gridded watershed. The extracted timeseries data is filtered based on the specified
         threshold area, and the station coordinates (longitude, latitude, UTM x, UTM y, elevation) are returned
         along with the timeseries data.
@@ -432,16 +431,16 @@ class MetProcessor(Aux, InOut):
     def convert_and_write_nldas_timeseries(self, list_dfs, station_coords, gmt,
                                            prefix=None, met_path=None, precip_path=None):
         """
-        Convert NLDAS-2-2 timeseries data to UTM coordinates and prepare for tRIBS input.
+        Convert NLDAS-2 timeseries data to UTM coordinates and prepare for tRIBS input.
 
-        This function processes NLDAS-2-2 timeseries data from multiple stations, converts the coordinates to UTM,
+        This function processes NLDAS-2 timeseries data from multiple stations, converts the coordinates to UTM,
         and prepares the data for tRIBS model input. The processed data is saved to meteorological and precipitation
         files in the specified directories.
 
         Parameters
         ----------
         list_dfs : list of pandas.DataFrame
-            A list of DataFrames, each containing NLDAS-2-2 timeseries data with columns such as 'date', 'psurf',
+            A list of DataFrames, each containing NLDAS-2 timeseries data with columns such as 'date', 'psurf',
             'wind_u', 'wind_v', 'temp', 'humidity', 'rsds', and 'prcp'.
         station_coords : list of tuples
             A list of tuples, each containing the (longitude, latitude, elevation) for each station.
@@ -612,13 +611,13 @@ class MetProcessor(Aux, InOut):
         Returns
         -------
         pandas.DataFrame
-            A DataFrame containing the retrieved and processed NLDAS-2-2 meteorological data for the specified centroid.
+            A DataFrame containing the retrieved and processed NLDAS-2 meteorological data for the specified centroid.
 
         Notes
         -----
         - The geographic centroid of the watershed is calculated and used to retrieve the meteorological data from the
-          NLDAS-2-2 dataset.
-        - The NLDAS-2-2 time series data is retrieved for the specified time range, processed, and written to the appropriate
+          NLDAS-2 dataset.
+        - The NLDAS-2 time series data is retrieved for the specified time range, processed, and written to the appropriate
           format using the `convert_and_write_nldas_timeseries` method.
         - A cache is used for the NLDAS-2 data retrieval to improve efficiency.
         """
