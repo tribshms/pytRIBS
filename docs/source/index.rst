@@ -21,6 +21,11 @@ major classes draw from a set of base classes. You can read about the underlying
 
 Note: this packages is currently under development and is subject to further changes.
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples:
+
+   examples
 
 .. toctree::
    :maxdepth: 2
