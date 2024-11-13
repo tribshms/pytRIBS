@@ -380,10 +380,10 @@ class InOut:
 
         """
         if file_path is None:
-            file_path = self.options["landtablename"]["value"]
+            file_path = self.landtablename["value"]
 
             if file_path is None:
-                print(self.options["landtablename"]["key_word"] + "is not specified.")
+                print(self.landtablename["key_word"] + "is not specified.")
                 return
 
         landuse_list = []

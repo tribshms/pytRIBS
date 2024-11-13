@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "pytRIBS"
 authors = [{name = "L. Wren Raming", email = "lraming@asu.edu"},
     {name = "C. Josh Cederstrom", email = "cjceders@asu.edu"},
+        {name = "Akram Hossain", email = "mhossa46@asu.edu"},
+        {name = "Jose Becerra", email = "jabecer3@asu.edu"},
     {name = "Enrique R. Vivoni", email = "evivoni@asu.edu"}]
 description = "A pre-to-post processing python package for the distributed hydrological model tRIBS"
 readme = "README.md"
@@ -33,7 +35,7 @@ dependencies = [
     "docker",
     "timezonefinder"
 ]
-version = "0.4.0"
+version = "0.5.0"
 
 [project.urls]
 Repository = "https://github.com/tribshms/pytRIBS"
