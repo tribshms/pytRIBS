@@ -14,6 +14,9 @@ A full tRIBS model setup, simulation, and analysis is provided [here.](https://z
 ## Release/Version Notes
 PytRIBS uses semantic versioning. Currently, we are in the initial development phase--anything MAY change at any time and
 this package SHOULD NOT be considered stable.
+### Verison 0.6.0 (in development)
+* fixed bug in reading landuse table (can only use for model or land class though)
+
 ### Verison 0.5.0 (in development)
 * Added in unsupervised classification function for NAIP image and Tree hieght rasters in Land Class
 * Finalized Mesh Class, with dependence on a Preprocessing Class (DEM and GIS analysis) and MeshGeneration Class
